@@ -1,3 +1,6 @@
+This is the repo for ESE645 final project.
+Team: Anbang Chen, Shizhuo Mu, Nova Han
+
 # Meeting Summary
 ### Nov 2nd
 - By Nov 7th, create github repo, prepare data and evaluation metrices.
