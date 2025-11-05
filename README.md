@@ -1,5 +1,5 @@
 This is the repo for ESE645 final project.
-Team: Anbang Chen, Shizhuo Mu, Nova Han
+Team: Anbang Chen, Shizhuo Mu, Nora Han
 
 # Meeting Summary
 ### Nov 2nd
