@@ -14,21 +14,23 @@ python scripts/test_direct_inversion_single.py --device cuda --num_steps 10
 python scripts/run_pie_bench_sample.py --num_images 5 --device cuda --num_steps 10
 ```
 
-### 3. Run on Full Category
+### 3. Run Full PIE-Bench (All 10 Categories)
 ```bash
-# On CUDA (if available)
-python scripts/run_pie_bench_full.py --categories 0 --device cuda --num_steps 50
-
-# On CPU (slower)
-python scripts/run_pie_bench_full.py --categories 0 --device cuda --num_steps 10
+# Recommended CUDA run (20 DDIM steps fits on A100; use 10–15 on smaller GPUs)
+python scripts/run_pie_bench_full.py \
+    --categories 0 1 2 3 4 5 6 7 8 9 \
+    --device cuda \
+    --num_steps 20
 ```
 
-### 4. Evaluate Results
+### 4. Evaluate Full PIE-Bench Results
 ```bash
+# Metrics: SSIM / LPIPS / CLIP
 python scripts/run_evaluation.py \
     --tgt_image_folder outputs/direct_inversion/annotation_images \
-    --output_csv results/metrics.csv \
-    --edit_categories 0
+    --output_csv results/direct_inversion_full.csv \
+    --edit_categories 0 1 2 3 4 5 6 7 8 9 \
+    --device cuda
 ```
 
 ## All Options

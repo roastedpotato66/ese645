@@ -203,6 +203,7 @@ class DirectInversion:
         
         return image_rec, ddim_latents, latent
     
+    @torch.no_grad()
     def invert(self, image_gt, prompt, guidance_scale=7.5, verbose=True):
         """
         Main inversion method with noise tracking.
