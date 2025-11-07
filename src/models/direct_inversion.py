@@ -48,7 +48,7 @@ class DirectInversionEditor(BaseEditor):
             # Explicitly disable MPS
             if hasattr(torch.backends, 'mps'):
                 torch.backends.mps.is_available = lambda: False
-        elif isinstance(device, str) and device.startswith("cuda"):
+        elif isinstance(device, str) and device.startswith("cuda") and os.name != 'nt':
             os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
         
         print(f"Loading Stable Diffusion model: {model_id}")
@@ -60,7 +60,8 @@ class DirectInversionEditor(BaseEditor):
             beta_end=0.012,
             beta_schedule="scaled_linear",
             clip_sample=False,
-            set_alpha_to_one=False
+            set_alpha_to_one=False,
+            steps_offset=1
         )
         
         # Decide dtype based on device to save GPU memory
