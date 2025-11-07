@@ -69,6 +69,7 @@ class DirectInversionEditor(BaseEditor):
             pipeline_dtype = torch.float16
         else:
             pipeline_dtype = torch.float32
+        self.pipeline_dtype = pipeline_dtype
 
         # Load Stable Diffusion model
         # Note: This will download the model on first run (~4GB)
@@ -106,8 +107,29 @@ class DirectInversionEditor(BaseEditor):
                 requires_safety_checker=False
             )
         
-        # Move to device AFTER loading
+        # Move to device AFTER loading (keep dtype conversions explicit)
         self.model = self.model.to(device)
+
+        if isinstance(device, str) and device.startswith("cuda"):
+            try:
+                # Keep text encoder in fp32 for stability, others in fp16
+                self.model.unet = self.model.unet.to(device=device, dtype=pipeline_dtype)
+                self.model.vae = self.model.vae.to(device=device, dtype=pipeline_dtype)
+                if hasattr(self.model.unet, "to"):
+                    self.model.unet.to(memory_format=torch.channels_last)
+                if hasattr(self.model, "text_encoder"):
+                    self.model.text_encoder = self.model.text_encoder.to(device=device, dtype=torch.float32)
+            except Exception as e:
+                print(f"Warning: unable to cast modules to desired dtype ({pipeline_dtype}): {e}")
+        elif device == 'cpu':
+            # Ensure all components on CPU with float32 (default)
+            try:
+                self.model.unet = self.model.unet.to(device=device, dtype=pipeline_dtype)
+                self.model.vae = self.model.vae.to(device=device, dtype=pipeline_dtype)
+                if hasattr(self.model, "text_encoder"):
+                    self.model.text_encoder = self.model.text_encoder.to(device=device, dtype=torch.float32)
+            except Exception:
+                pass
 
         # Determine low-resource mode for smaller GPUs
         self.low_resource = False
