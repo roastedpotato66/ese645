@@ -2,8 +2,6 @@
 
 **Team:** Anbang Chen, Shizhuo Mu, Nora Han
 
-> ⚠️ **IMPORTANT:** CPU execution is **not supported** on macOS due to Bus Error 10. Please use **CUDA** for running the models. See `CPU_LIMITATION.md` for details.
-
 ## Meeting Summary
 ### Nov 2nd
 * By Nov 7th, create github repo, prepare data and evaluation metrices.
@@ -33,15 +31,7 @@ ese645/
 conda create -n ese645 python=3.9 -y
 conda activate ese645
 
-# Install PyTorch (choose based on your system)
-# For CUDA:
-conda install pytorch torchvision torchaudio pytorch-cuda=11.8 -c pytorch -c nvidia
-
-# For MPS (Mac M1/M2):
-conda install pytorch torchvision torchaudio -c pytorch
-
-# For CPU only:
-conda install pytorch torchvision torchaudio cpuonly -c pytorch
+# Install PyTorch...
 
 # Install other dependencies
 pip install -r requirements.txt
