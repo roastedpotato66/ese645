@@ -212,3 +212,6 @@ ref_docs/
 # output images
 outputs/
 results/
+
+# mac specific
+.DS_Store

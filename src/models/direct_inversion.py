@@ -193,7 +193,8 @@ class DirectInversionEditor(BaseEditor):
         self_replace_steps=0.6,
         blend_word=None,
         output_path=None,
-        return_intermediate=False
+        return_intermediate=False,
+        verbose=True
     ):
         """
         Edit an image using Direct Inversion + P2P.
@@ -213,25 +214,31 @@ class DirectInversionEditor(BaseEditor):
             PIL.Image or dict: Edited image (or dict with intermediate results)
         """
         # Load and preprocess image
-        print(f"Loading image from: {image_path}")
+        if verbose:
+            print(f"Loading image from: {image_path}")
         image_gt = load_512(image_path)
         
         prompts = [prompt_src, prompt_tar]
-        print(f"Source prompt: {prompt_src}")
-        print(f"Target prompt: {prompt_tar}")
+        if verbose:
+            print(f"Source prompt: {prompt_src}")
+            print(f"Target prompt: {prompt_tar}")
         
         # Step 1: Perform Direct Inversion
-        print("\n[1/3] Performing Direct Inversion...")
+        if verbose:
+            print("\n[1/3] Performing Direct Inversion...")
         image_rec, image_rec_latent, x_stars, noise_loss_list = self.inverter.invert(
             image_gt=image_gt,
             prompt=prompts,
-            guidance_scale=guidance_scale
+            guidance_scale=guidance_scale,
+            verbose=verbose
         )
         x_t = x_stars[-1]  # Get the inverted noise latent
-        print(f"Inversion complete. Latent shape: {x_t.shape}")
+        if verbose:
+            print(f"Inversion complete. Latent shape: {x_t.shape}")
         
         # Step 2: Reconstruct with Direct Inversion
-        print("\n[2/3] Reconstructing image...")
+        if verbose:
+            print("\n[2/3] Reconstructing image...")
         controller = AttentionStore()
         reconstruct_latent, _ = direct_inversion_p2p_guidance_forward(
             model=self.model,
@@ -245,10 +252,12 @@ class DirectInversionEditor(BaseEditor):
             low_resource=self.low_resource
         )
         reconstruct_image = latent2image(vae=self.model.vae, latents=reconstruct_latent)[0]
-        print("Reconstruction complete")
+        if verbose:
+            print("Reconstruction complete")
         
         # Step 3: Edit with P2P
-        print("\n[3/3] Performing P2P editing...")
+        if verbose:
+            print("\n[3/3] Performing P2P editing...")
         # Parse blend words if provided
         if blend_word is not None:
             blend_words = [blend_word.split()[0], blend_word.split()[1]]
@@ -283,7 +292,8 @@ class DirectInversionEditor(BaseEditor):
         
         edited_images = latent2image(vae=self.model.vae, latents=edited_latent)
         edited_image = edited_images[-1]  # Get the edited (target) image
-        print("P2P editing complete")
+        if verbose:
+            print("P2P editing complete")
         
         # Convert to PIL Image
         result_image = Image.fromarray(edited_image)
@@ -292,7 +302,8 @@ class DirectInversionEditor(BaseEditor):
         if output_path:
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
             result_image.save(output_path)
-            print(f"\nSaved edited image to: {output_path}")
+            if verbose:
+                print(f"\nSaved edited image to: {output_path}")
         
         # Return results
         if return_intermediate:

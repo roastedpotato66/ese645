@@ -1,29 +1,31 @@
 # Direct Inversion - Quick Start
 
-## Simple Commands (From Project Root)
+## Simple Commands
+**Try to run them on good GPUs!**
+**I tried running them on my RTX3070ti (8g ram) even with num_steps = 5 will have OOM error**
 
-### 1. Test on 1 Image (CPU, Fast)
+### 1. Test on 1 Image
 ```bash
-conda run -n cis python scripts/test_direct_inversion_single.py --device cpu --num_steps 10
+python scripts/test_direct_inversion_single.py --device cuda --num_steps 10
 ```
 
-### 2. Run on 5 Sample Images (CPU)
+### 2. Run on 5 Sample Images
 ```bash
-conda run -n cis python scripts/run_pie_bench_sample.py --num_images 5 --device cpu --num_steps 10
+python scripts/run_pie_bench_sample.py --num_images 5 --device cuda --num_steps 10
 ```
 
-### 3. Run on Full Category (CUDA Recommended)
+### 3. Run on Full Category
 ```bash
 # On CUDA (if available)
-conda run -n cis python scripts/run_pie_bench_full.py --categories 0 --device cuda --num_steps 50
+python scripts/run_pie_bench_full.py --categories 0 --device cuda --num_steps 50
 
 # On CPU (slower)
-conda run -n cis python scripts/run_pie_bench_full.py --categories 0 --device cpu --num_steps 10
+python scripts/run_pie_bench_full.py --categories 0 --device cuda --num_steps 10
 ```
 
 ### 4. Evaluate Results
 ```bash
-conda run -n cis python scripts/run_evaluation.py \
+python scripts/run_evaluation.py \
     --tgt_image_folder outputs/direct_inversion/annotation_images \
     --output_csv results/metrics.csv \
     --edit_categories 0
@@ -53,7 +55,7 @@ conda run -n cis python scripts/run_evaluation.py \
 ```
 
 **DDIM Steps:**
-- **10 steps**: Fast, good for testing/CPU
+- **10 steps**: Fast, good for testing
 - **20 steps**: Balanced
 - **50 steps**: Best quality, use with CUDA
 

@@ -19,6 +19,7 @@ ese645/
 ├── scripts/             # Run scripts
 ├── outputs/             # Generated images
 ├── results/             # Evaluation CSVs
+├── notebooks/           # For Colab
 └── Documentation (README, guides)
 ```
 
@@ -46,47 +47,4 @@ The PIE-Bench dataset is already downloaded in `data/PIE-Bench_v1/`:
 
 ## Usage
 
-### Run Direct Inversion Baseline
-
-```bash
-# Process a few images for testing (on MPS)
-python scripts/run_direct_inversion.py \
-    --edit_categories 0 \
-    --num_images 5 \
-    --device mps \
-    --num_ddim_steps 20
-
-# Process all images in category 0 (on CUDA)
-python scripts/run_direct_inversion.py \
-    --edit_categories 0 \
-    --device cuda \
-    --num_ddim_steps 50
-
-# Process multiple categories
-python scripts/run_direct_inversion.py \
-    --edit_categories 0 1 2 \
-    --device cuda
-```
-
-**Note:** First run will download Stable Diffusion v1.4 model (~4GB).
-
-### Run Evaluation
-
-```bash
-# Evaluate Direct Inversion results
-python scripts/run_evaluation.py \
-    --tgt_image_folder outputs/direct_inversion/annotation_images \
-    --output_csv results/direct_inversion_metrics.csv \
-    --edit_categories 0 \
-    --device cuda
-```
-
-**Output:** CSV file with SSIM, LPIPS, and CLIP similarity for each image.
-
-### Test Evaluation Metrics Only
-
-```bash
-# Test metrics calculator on random images
-cd src/evaluation
-python metrics.py
-```
+See usage markdown in `scripts/` for different models.

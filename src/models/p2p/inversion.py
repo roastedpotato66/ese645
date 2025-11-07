@@ -157,7 +157,7 @@ class DirectInversion:
         self.prompt = prompt
     
     @torch.no_grad()
-    def ddim_loop(self, latent):
+    def ddim_loop(self, latent, verbose=True):
         """
         Perform DDIM inversion loop: latent -> noise.
         
@@ -173,7 +173,8 @@ class DirectInversion:
         all_latent = [latent]
         latent = latent.clone().detach()
         
-        print("Running DDIM Inversion...")
+        if verbose:
+            print("Running DDIM Inversion...")
         for i in range(self.num_ddim_steps):
             t = self.model.scheduler.timesteps[len(self.model.scheduler.timesteps) - i - 1]
             noise_pred = self.get_noise_pred_single(latent, t, cond_embeddings)
@@ -183,7 +184,7 @@ class DirectInversion:
         return all_latent
     
     @torch.no_grad()
-    def ddim_inversion(self, image):
+    def ddim_inversion(self, image, verbose=True):
         """
         Complete DDIM inversion process.
         
@@ -198,11 +199,11 @@ class DirectInversion:
         
         latent = image2latent(self.model.vae, image).to(dtype=self.model.unet.dtype)
         image_rec = latent2image(self.model.vae, latent)[0]
-        ddim_latents = self.ddim_loop(latent)
+        ddim_latents = self.ddim_loop(latent, verbose=verbose)
         
         return image_rec, ddim_latents, latent
     
-    def invert(self, image_gt, prompt, guidance_scale=7.5):
+    def invert(self, image_gt, prompt, guidance_scale=7.5, verbose=True):
         """
         Main inversion method with noise tracking.
         
@@ -220,7 +221,7 @@ class DirectInversion:
         # register_attention_control(self.model, None)
         
         # Perform inversion
-        image_rec, ddim_latents, image_rec_latent = self.ddim_inversion(image_gt)
+        image_rec, ddim_latents, image_rec_latent = self.ddim_inversion(image_gt, verbose=verbose)
         
         # Track noise predictions during inversion
         # This is used for Direct Inversion's key feature

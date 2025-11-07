@@ -20,6 +20,7 @@ def main():
                        help='Categories to process')
     parser.add_argument('--device', type=str, default='auto', choices=['auto', 'cuda', 'mps', 'cpu'])
     parser.add_argument('--num_steps', type=int, default=50, help='Number of DDIM steps (use 10-20 for CPU, 50 for CUDA)')
+    parser.add_argument('--verbose', action='store_true', help='Print detailed logs for each image')
     args = parser.parse_args()
     
     # Detect device (skip MPS by default due to memory issues)
@@ -50,7 +51,10 @@ def main():
     # Process images
     success = 0
     errors = 0
-    for img_id, item in tqdm(samples, desc="Editing"):
+    total = len(samples)
+    progress = tqdm(samples, desc="Editing", unit="img")
+    for idx, (img_id, item) in enumerate(progress, start=1):
+        progress.set_description(f"[{idx}/{total}] {img_id}")
         image_path = f"data/PIE-Bench_v1/annotation_images/{item['image_path']}"
         prompt_src = item['original_prompt'].replace('[', '').replace(']', '')
         prompt_tar = item['editing_prompt'].replace('[', '').replace(']', '')
@@ -65,13 +69,16 @@ def main():
                 prompt_src=prompt_src,
                 prompt_tar=prompt_tar,
                 blend_word=blend_word,
-                output_path=output_path
+                output_path=output_path,
+                verbose=args.verbose
             )
             success += 1
         except Exception as e:
-            print(f"\nError on {img_id}: {e}")
+            progress.write(f"Error on {img_id}: {e}")
             errors += 1
             continue
+
+    progress.close()
     
     print(f"\n{'='*60}")
     print(f"Complete!")
