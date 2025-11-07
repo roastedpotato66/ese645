@@ -86,10 +86,17 @@ def p2p_guidance_forward(
 
 def direct_inversion_p2p_guidance_diffusion_step(model, controller, latents, context, t, guidance_scale, noise_loss, low_resource=False, add_offset=True):
     """Single diffusion step with Direct Inversion noise correction."""
+    dtype = model.unet.dtype
     if low_resource:
-        noise_pred_uncond = model.unet(latents, t, encoder_hidden_states=context[0])["sample"]
-        noise_prediction_text = model.unet(latents, t, encoder_hidden_states=context[1])["sample"]
+        latents = latents.to(dtype=dtype)
+        uncond_context, text_context = context
+        uncond_context = uncond_context.to(dtype=dtype)
+        text_context = text_context.to(dtype=dtype)
+        noise_pred_uncond = model.unet(latents, t, encoder_hidden_states=uncond_context)["sample"]
+        noise_prediction_text = model.unet(latents, t, encoder_hidden_states=text_context)["sample"]
     else:
+        latents = latents.to(dtype=dtype)
+        context = context.to(dtype=dtype)
         latents_input = torch.cat([latents] * 2)
         noise_pred = model.unet(latents_input, t, encoder_hidden_states=context)["sample"]
         noise_pred_uncond, noise_prediction_text = noise_pred.chunk(2)
@@ -99,6 +106,7 @@ def direct_inversion_p2p_guidance_diffusion_step(model, controller, latents, con
     
     # Direct Inversion: Add noise correction for source branch
     if add_offset:
+        noise_loss = noise_loss.to(dtype=dtype)
         latents = torch.concat((latents[:1] + noise_loss[:1], latents[1:]))
     
     latents = controller.step_callback(latents)
@@ -115,7 +123,8 @@ def direct_inversion_p2p_guidance_forward(
     guidance_scale=7.5,
     generator=None,
     noise_loss_list=None,
-    add_offset=True
+    add_offset=True,
+    low_resource=False
 ):
     """
     Direct Inversion forward diffusion with noise correction.
@@ -150,6 +159,7 @@ def direct_inversion_p2p_guidance_forward(
         return_tensors="pt",
     )
     text_embeddings = model.text_encoder(text_input.input_ids.to(model.device))[0]
+    text_embeddings = text_embeddings.to(dtype=model.unet.dtype)
     max_length = text_input.input_ids.shape[-1]
     
     # Encode unconditional prompt
@@ -157,6 +167,7 @@ def direct_inversion_p2p_guidance_forward(
         [""] * batch_size, padding="max_length", max_length=max_length, return_tensors="pt"
     )
     uncond_embeddings = model.text_encoder(uncond_input.input_ids.to(model.device))[0]
+    uncond_embeddings = uncond_embeddings.to(dtype=model.unet.dtype)
 
     # Initialize latent
     latent, latents = init_latent(latent, model, height, width, generator, batch_size)
@@ -164,10 +175,13 @@ def direct_inversion_p2p_guidance_forward(
     
     # Forward diffusion with noise correction
     for i, t in enumerate(model.scheduler.timesteps):
-        context = torch.cat([uncond_embeddings, text_embeddings])
+        if low_resource:
+            context = (uncond_embeddings, text_embeddings)
+        else:
+            context = torch.cat([uncond_embeddings, text_embeddings])
         latents = direct_inversion_p2p_guidance_diffusion_step(
-            model, controller, latents, context, t, guidance_scale, 
-            noise_loss_list[i], low_resource=False, add_offset=add_offset
+            model, controller, latents, context, t, guidance_scale,
+            noise_loss_list[i], low_resource=low_resource, add_offset=add_offset
         )
         
     return latents, latent

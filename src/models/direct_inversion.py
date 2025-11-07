@@ -6,6 +6,7 @@ Reference: PIE-Bench paper, Table 1
 - Quick and simple editing but less flexible
 """
 
+import os
 import torch
 import numpy as np
 from PIL import Image
@@ -43,11 +44,12 @@ class DirectInversionEditor(BaseEditor):
         
         # Force CPU mode if specified (disable MPS completely)
         if device == 'cpu':
-            import os
             os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '0'
             # Explicitly disable MPS
             if hasattr(torch.backends, 'mps'):
                 torch.backends.mps.is_available = lambda: False
+        elif isinstance(device, str) and device.startswith("cuda"):
+            os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
         
         print(f"Loading Stable Diffusion model: {model_id}")
         print(f"Device: {device}")
@@ -61,13 +63,19 @@ class DirectInversionEditor(BaseEditor):
             set_alpha_to_one=False
         )
         
+        # Decide dtype based on device to save GPU memory
+        if isinstance(device, str) and device.startswith("cuda"):
+            pipeline_dtype = torch.float16
+        else:
+            pipeline_dtype = torch.float32
+
         # Load Stable Diffusion model
         # Note: This will download the model on first run (~4GB)
         try:
             self.model = StableDiffusionPipeline.from_pretrained(
                 model_id,
                 scheduler=self.scheduler,
-                torch_dtype=torch.float32,  # Use float32 for compatibility
+                torch_dtype=pipeline_dtype,
                 safety_checker=None,  # Disable safety checker to save memory
                 requires_safety_checker=False,
                 low_cpu_mem_usage=True if device == 'cpu' else False,
@@ -99,6 +107,42 @@ class DirectInversionEditor(BaseEditor):
         
         # Move to device AFTER loading
         self.model = self.model.to(device)
+
+        # Determine low-resource mode for smaller GPUs
+        self.low_resource = False
+        if isinstance(device, str) and device.startswith("cuda") and torch.cuda.is_available():
+            try:
+                device_obj = torch.device(device)
+            except Exception:
+                device_obj = torch.device("cuda")
+            device_index = device_obj.index if device_obj.index is not None else torch.cuda.current_device()
+            try:
+                total_mem = torch.cuda.get_device_properties(device_index).total_memory
+            except Exception:
+                total_mem = None
+            if total_mem is not None and total_mem <= 10 * 1024 ** 3:
+                self.low_resource = True
+
+        if isinstance(device, str) and device.startswith("cuda"):
+            try:
+                self.model.enable_attention_slicing()
+            except Exception:
+                pass
+            if hasattr(self.model, "enable_xformers_memory_efficient_attention"):
+                try:
+                    self.model.enable_xformers_memory_efficient_attention()
+                except Exception:
+                    pass
+            try:
+                self.model.enable_vae_slicing()
+                self.model.enable_vae_tiling()
+            except Exception:
+                pass
+            if self.low_resource and os.name != 'nt':
+                try:
+                    self.model.enable_sequential_cpu_offload()
+                except Exception:
+                    pass
         
         # For CPU, use slower but more stable attention
         if device == 'cpu':
@@ -197,9 +241,10 @@ class DirectInversionEditor(BaseEditor):
             latent=x_t,
             num_inference_steps=self.num_ddim_steps,
             guidance_scale=guidance_scale,
-            generator=None
+            generator=None,
+            low_resource=self.low_resource
         )
-        reconstruct_image = latent2image(model=self.model.vae, latents=reconstruct_latent)[0]
+        reconstruct_image = latent2image(vae=self.model.vae, latents=reconstruct_latent)[0]
         print("Reconstruction complete")
         
         # Step 3: Edit with P2P
@@ -232,10 +277,11 @@ class DirectInversionEditor(BaseEditor):
             latent=x_t,
             num_inference_steps=self.num_ddim_steps,
             guidance_scale=guidance_scale,
-            generator=None
+            generator=None,
+            low_resource=self.low_resource
         )
         
-        edited_images = latent2image(model=self.model.vae, latents=edited_latent)
+        edited_images = latent2image(vae=self.model.vae, latents=edited_latent)
         edited_image = edited_images[-1]  # Get the edited (target) image
         print("P2P editing complete")
         
@@ -244,6 +290,7 @@ class DirectInversionEditor(BaseEditor):
         
         # Save if output path provided
         if output_path:
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
             result_image.save(output_path)
             print(f"\nSaved edited image to: {output_path}")
         

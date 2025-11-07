@@ -64,7 +64,8 @@ def image2latent(vae, image):
         else:
             # Normalize to [-1, 1]
             image = torch.from_numpy(image).float() / 127.5 - 1
-            image = image.permute(2, 0, 1).unsqueeze(0).to(vae.device)
+            vae_dtype = getattr(vae, "dtype", torch.float32)
+            image = image.permute(2, 0, 1).unsqueeze(0).to(device=vae.device, dtype=vae_dtype)
             
             # Encode to latent
             latents = vae.encode(image)['latent_dist'].mean
@@ -87,6 +88,7 @@ def latent2image(vae, latents, return_type='np'):
         numpy.ndarray or torch.Tensor: Decoded image
     """
     latents = 1 / 0.18215 * latents.detach()
+    latents = latents.to(dtype=getattr(vae, "dtype", latents.dtype))
     image = vae.decode(latents)['sample']
     
     if return_type == 'np':
@@ -153,12 +155,21 @@ def setup_seed(seed=1234):
 
 def init_latent(latent, model, height, width, generator, batch_size):
     """Initialize latent tensor."""
+    channels = getattr(model.unet, "config", model.unet).in_channels
+    latent_device = model.device
+    latent_dtype = model.unet.dtype
+
     if latent is None:
         latent = torch.randn(
-            (1, model.unet.in_channels, height // 8, width // 8),
+            (1, channels, height // 8, width // 8),
             generator=generator,
+            device=latent_device,
+            dtype=latent_dtype,
         )
-    latents = latent.expand(batch_size,  model.unet.in_channels, height // 8, width // 8).to(model.device)
+    else:
+        latent = latent.to(device=latent_device, dtype=latent_dtype)
+
+    latents = latent.expand(batch_size, channels, height // 8, width // 8).to(device=latent_device, dtype=latent_dtype)
     return latent, latents
 
 

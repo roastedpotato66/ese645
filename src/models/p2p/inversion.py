@@ -72,6 +72,10 @@ class DirectInversion:
         difference_scale_pred_original_sample = - beta_prod_t ** 0.5 / alpha_prod_t ** 0.5
         difference_scale_pred_sample_direction = (1 - alpha_prod_t_prev) ** 0.5
         difference_scale = alpha_prod_t_prev ** 0.5 * difference_scale_pred_original_sample + difference_scale_pred_sample_direction
+
+        target_dtype = model_output.dtype
+        prev_sample = prev_sample.to(dtype=target_dtype)
+        difference_scale = difference_scale.to(dtype=target_dtype)
         
         return prev_sample, difference_scale
     
@@ -98,6 +102,7 @@ class DirectInversion:
         next_original_sample = (sample - beta_prod_t ** 0.5 * model_output) / alpha_prod_t ** 0.5
         next_sample_direction = (1 - alpha_prod_t_next) ** 0.5 * model_output
         next_sample = alpha_prod_t_next ** 0.5 * next_original_sample + next_sample_direction
+        next_sample = next_sample.to(dtype=model_output.dtype)
         
         return next_sample
     
@@ -113,6 +118,8 @@ class DirectInversion:
         Returns:
             torch.Tensor: Predicted noise
         """
+        latents = latents.to(dtype=self.model.unet.dtype)
+        context = context.to(dtype=self.model.unet.dtype)
         noise_pred = self.model.unet(latents, t, encoder_hidden_states=context)["sample"]
         return noise_pred
     
@@ -132,6 +139,7 @@ class DirectInversion:
             return_tensors="pt"
         )
         uncond_embeddings = self.model.text_encoder(uncond_input.input_ids.to(self.model.device))[0]
+        uncond_embeddings = uncond_embeddings.to(dtype=self.model.unet.dtype)
         
         # Encode conditional prompt
         text_input = self.model.tokenizer(
@@ -142,6 +150,7 @@ class DirectInversion:
             return_tensors="pt",
         )
         text_embeddings = self.model.text_encoder(text_input.input_ids.to(self.model.device))[0]
+        text_embeddings = text_embeddings.to(dtype=self.model.unet.dtype)
         
         # Concatenate unconditional and conditional embeddings
         self.context = torch.cat([uncond_embeddings, text_embeddings])
@@ -187,7 +196,7 @@ class DirectInversion:
         # Convert image to latent
         from src.utils.image_utils import image2latent, latent2image
         
-        latent = image2latent(self.model.vae, image)
+        latent = image2latent(self.model.vae, image).to(dtype=self.model.unet.dtype)
         image_rec = latent2image(self.model.vae, latent)[0]
         ddim_latents = self.ddim_loop(latent)
         
@@ -234,7 +243,7 @@ class DirectInversion:
             
             # Store noise loss for later use
             noise_loss = noise_pred_tar - noise_pred_src
-            noise_loss_list.append(noise_loss * difference_scale)
+            noise_loss_list.append((noise_loss * difference_scale).to(dtype=self.model.unet.dtype))
         
         return image_rec, image_rec_latent, ddim_latents, noise_loss_list
 

@@ -107,8 +107,12 @@ class LocalBlend:
     
     def __call__(self, x_t, attention_store):
         self.counter += 1
-        if self.counter > self.start_blend:
+        if not attention_store or "down_cross" not in attention_store or "up_cross" not in attention_store:
+            return x_t
 
+        if self.counter > self.start_blend:
+            if len(attention_store["down_cross"]) < 4 or len(attention_store["up_cross"]) < 3:
+                return x_t
             maps = attention_store["down_cross"][2:4] + attention_store["up_cross"][:3]
             maps = [item.reshape(self.alpha_layers.shape[0], -1, 1, 16, 16, MAX_NUM_WORDS) for item in maps]
             maps = torch.cat(maps, dim=1)
