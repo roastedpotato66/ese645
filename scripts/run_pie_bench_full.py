@@ -3,6 +3,9 @@
 Run Direct Inversion on full PIE-Bench dataset (all 700 images).
 """
 
+import time
+from datetime import timedelta
+
 import torch
 import json
 import sys
@@ -53,6 +56,7 @@ def main():
     errors = 0
     total = len(samples)
     progress = tqdm(samples, desc="Editing", unit="img")
+    start_time = time.perf_counter()
     for idx, (img_id, item) in enumerate(progress, start=1):
         progress.set_description(f"[{idx}/{total}] {img_id}")
         image_path = f"data/PIE-Bench_v1/annotation_images/{item['image_path']}"
@@ -79,12 +83,19 @@ def main():
             continue
 
     progress.close()
+    elapsed = time.perf_counter() - start_time
     
     print(f"\n{'='*60}")
     print(f"Complete!")
     print(f"  Success: {success}")
     print(f"  Errors: {errors}")
     print(f"  Output: outputs/direct_inversion/")
+    elapsed_td = timedelta(seconds=elapsed)
+    print(f"  Time elapsed: {elapsed_td}")
+    if success:
+        avg_per_image = elapsed / success
+        print(f"  Avg per processed image: {avg_per_image:.2f} s")
+    print(f"{'='*60}")
     print(f"{'='*60}")
 
 if __name__ == '__main__':

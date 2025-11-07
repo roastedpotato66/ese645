@@ -3,6 +3,9 @@
 Run Direct Inversion on a small sample of PIE-Bench (e.g., first 5-10 images).
 """
 
+import time
+from datetime import timedelta
+
 import torch
 import json
 import sys
@@ -51,6 +54,8 @@ def main():
     # Process images
     total = len(samples)
     progress = tqdm(samples, desc="Editing", unit="img")
+    start_time = time.perf_counter()
+    processed = 0
     for idx, (img_id, item) in enumerate(progress, start=1):
         progress.set_description(f"[{idx}/{total}] {img_id}")
         image_path = f"data/PIE-Bench_v1/annotation_images/{item['image_path']}"
@@ -70,13 +75,25 @@ def main():
                 output_path=output_path,
                 verbose=args.verbose
             )
+            processed += 1
         except Exception as e:
             progress.write(f"Error on {img_id}: {e}")
             continue
 
     progress.close()
-    
+
+    elapsed = time.perf_counter() - start_time
     print(f"\n✓ Complete! Results in outputs/direct_inversion/")
+    if processed:
+        elapsed_td = timedelta(seconds=elapsed)
+        avg_per_image = elapsed / processed
+        total_images_full = len(annotations)
+        estimated_total = avg_per_image * total_images_full
+        print(f"  • Time for {processed} images: {elapsed_td}")
+        print(f"  • Avg per image: {avg_per_image:.2f} s")
+        print(f"  • Estimated full PIE-Bench ({total_images_full} imgs): {timedelta(seconds=estimated_total)}")
+    else:
+        print("  • No images processed successfully; cannot estimate total time.")
 
 if __name__ == '__main__':
     main()
