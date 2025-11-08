@@ -209,3 +209,9 @@ __marimo__/
 # reference docs
 ref_docs/
 
+# output images
+outputs/
+results/
+
+# mac specific
+.DS_Store
