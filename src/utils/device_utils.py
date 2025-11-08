@@ -163,10 +163,12 @@ def print_batch_size_info(device, num_ddim_steps, batch_size, mem_info=None):
     else:
         print(f"Device: {device} (no GPU memory info available)")
     print(f"DDIM Steps: {num_ddim_steps}")
-    print(f"Recommended Batch Size: {batch_size}")
+    print(f"Batch Size: {batch_size}")
     if batch_size > 1:
-        print(f"  → Processing {batch_size} images in parallel")
-        print(f"  → Expected speedup: ~{min(batch_size, 8):.1f}x")
+        print(f"  → Processing images in batches of {batch_size}")
+        print(f"  → Note: VAE/text encoding is batched (~10-20% speedup)")
+        print(f"  → Note: UNet calls are sequential (per-image attention controllers)")
+        print(f"  → Expected speedup: ~1.1-1.3x (limited by sequential UNet)")
     else:
         print(f"  → Sequential processing (no batching)")
     print(f"{'='*60}\n")

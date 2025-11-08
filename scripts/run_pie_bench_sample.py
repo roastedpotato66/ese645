@@ -69,11 +69,16 @@ def main():
     start_time = time.perf_counter()
     processed = 0
     errors = 0
+    total_batches = (total + batch_size - 1) // batch_size
+    
+    # Main progress bar
+    main_progress = tqdm(total=total, desc="Processing images", unit="img", position=0)
     
     # Process in batches
     for batch_start in range(0, total, batch_size):
         batch_end = min(batch_start + batch_size, total)
         batch_samples = samples[batch_start:batch_end]
+        batch_num = (batch_start // batch_size) + 1
         
         # Prepare batch data
         image_paths = []
@@ -93,33 +98,43 @@ def main():
             output_paths.append(output_path)
             img_ids.append(img_id)
         
-        # Process batch
+        # Process batch with progress callback
         try:
+            # Create progress callback
+            def progress_callback(current_in_batch, total_in_batch, img_id):
+                # Update description and progress (one image done)
+                main_progress.set_description(f"Batch {batch_num}/{total_batches} | {img_id[:40]}")
+                main_progress.update(1)
+            
             results = editor.edit_images_batch(
                 image_paths=image_paths,
                 prompt_srcs=prompt_srcs,
                 prompt_tars=prompt_tars,
                 blend_words=blend_words,
                 output_paths=output_paths,
-                verbose=args.verbose
+                verbose=args.verbose,
+                progress_callback=progress_callback
             )
             
-            # Count successes and errors
+            # Count successes and errors (progress already updated by callback)
             for i, result in enumerate(results):
                 if result is not None:
                     processed += 1
                 else:
                     errors += 1
-                    print(f"Error processing {img_ids[i]}")
+                    main_progress.write(f"Error processing {img_ids[i]}")
                     
         except Exception as e:
-            print(f"Error processing batch: {e}")
+            main_progress.write(f"Error processing batch {batch_num}: {e}")
             errors += len(batch_samples)
+            main_progress.update(len(batch_samples))  # Update progress even on error
             continue
         
         # Clear cache after each batch
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
+    
+    main_progress.close()
 
     elapsed = time.perf_counter() - start_time
     print(f"\n{'='*60}")

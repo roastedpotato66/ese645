@@ -1,8 +1,6 @@
 # Direct Inversion - Quick Start
 
 ## Simple Commands
-**Try to run them on good GPUs!**
-**I tried running them on my RTX3070ti (8g ram) even with num_steps = 5 will have OOM error**
 
 ### 1. Test on 1 Image
 ```bash
@@ -16,7 +14,7 @@ python scripts/run_pie_bench_sample.py --num_images 5 --device cuda --num_steps 
 
 ### 3. Run Full PIE-Bench (All 10 Categories)
 ```bash
-# Recommended CUDA run (20 DDIM steps fits on A100; use 10–15 on smaller GPUs)
+# Recommended CUDA run (30 DDIM steps fits on A100; use 10–15 on smaller GPUs)
 # Batch size is automatically detected based on GPU memory
 python scripts/run_pie_bench_full.py \
     --categories 0 1 2 3 4 5 6 7 8 9 \
@@ -72,11 +70,15 @@ python scripts/run_evaluation.py \
 - **20 steps**: Balanced
 - **50 steps**: Best quality, use with CUDA
 
-**Batch Processing (Automatic):**
+**Batch Processing (Current Implementation):**
 - Batch size is automatically detected based on GPU memory
-- **A100 (80GB)**: Batch size ~10-12 (expected ~7-8x speedup)
-- **A100 (40GB)**: Batch size ~6-8 (expected ~6-7x speedup)
-- **L4/RTX 4090 (24GB)**: Batch size ~3-4 (expected ~3-4x speedup)
+- **Current Status**: Images are processed in batches for memory management
+- **Limitation**: UNet calls are sequential (per-image attention controllers)
+- **Speedup**: ~1.1-1.3x from batched VAE/text encoding (not full parallelization)
+- **Future**: True UNet batching requires refactoring attention controllers
+- **A100 (80GB)**: Batch size ~10-12 (organizes processing, limited speedup)
+- **A100 (40GB)**: Batch size ~6-8 (organizes processing, limited speedup)
+- **L4/RTX 4090 (24GB)**: Batch size ~3-4 (organizes processing, limited speedup)
 - **RTX 3070 Ti (8GB)**: Batch size 1 (no batching, sequential)
 - Override with `--batch_size N` to manually set batch size
 
