@@ -17,6 +17,7 @@ from .p2p.inversion import DirectInversion
 from .p2p.attention_control import AttentionStore, make_controller
 from src.utils.image_utils import load_512, latent2image
 from src.utils.diffusion_utils import direct_inversion_p2p_guidance_forward
+from src.utils.device_utils import get_optimal_batch_size, get_batch_size_with_override
 
 
 class DirectInversionEditor(BaseEditor):
@@ -339,6 +340,75 @@ class DirectInversionEditor(BaseEditor):
             }
         else:
             return result_image
+    
+    def edit_images_batch(
+        self,
+        image_paths,
+        prompt_srcs,
+        prompt_tars,
+        guidance_scale=7.5,
+        cross_replace_steps=0.4,
+        self_replace_steps=0.6,
+        blend_words=None,
+        output_paths=None,
+        verbose=False
+    ):
+        """
+        Edit multiple images in a batch.
+        
+        This method processes multiple images, but each image is still processed
+        individually for correctness. The batch processing here mainly helps with
+        memory management and allows for future optimization.
+        
+        Args:
+            image_paths: List of image paths or numpy arrays
+            prompt_srcs: List of source prompts
+            prompt_tars: List of target prompts
+            guidance_scale: Classifier-free guidance scale
+            cross_replace_steps: Fraction of steps to apply cross-attention control
+            self_replace_steps: Fraction of steps to apply self-attention control
+            blend_words: List of blend words (format: ["word1 word2", ...]) or None
+            output_paths: List of output paths or None
+            verbose: Whether to print detailed logs
+            
+        Returns:
+            list: List of edited PIL Images
+        """
+        if blend_words is None:
+            blend_words = [None] * len(image_paths)
+        if output_paths is None:
+            output_paths = [None] * len(image_paths)
+        
+        results = []
+        for i, (image_path, prompt_src, prompt_tar, blend_word, output_path) in enumerate(
+            zip(image_paths, prompt_srcs, prompt_tars, blend_words, output_paths)
+        ):
+            if verbose:
+                print(f"\nProcessing image {i+1}/{len(image_paths)}")
+            
+            try:
+                result = self.edit_image(
+                    image_path=image_path,
+                    prompt_src=prompt_src,
+                    prompt_tar=prompt_tar,
+                    guidance_scale=guidance_scale,
+                    cross_replace_steps=cross_replace_steps,
+                    self_replace_steps=self_replace_steps,
+                    blend_word=blend_word,
+                    output_path=output_path,
+                    verbose=verbose
+                )
+                results.append(result)
+                
+                # Clear cache between images to manage memory
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                    
+            except Exception as e:
+                print(f"Error processing image {i+1}: {e}")
+                results.append(None)
+        
+        return results
 
 
 def test_direct_inversion():

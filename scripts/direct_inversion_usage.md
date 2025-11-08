@@ -17,10 +17,19 @@ python scripts/run_pie_bench_sample.py --num_images 5 --device cuda --num_steps 
 ### 3. Run Full PIE-Bench (All 10 Categories)
 ```bash
 # Recommended CUDA run (20 DDIM steps fits on A100; use 10–15 on smaller GPUs)
+# Batch size is automatically detected based on GPU memory
 python scripts/run_pie_bench_full.py \
     --categories 0 1 2 3 4 5 6 7 8 9 \
     --device cuda \
-    --num_steps 20
+    --num_steps 20 \
+    --batch_size auto
+
+# Or manually specify batch size (e.g., for A100 80GB, try batch_size=10)
+python scripts/run_pie_bench_full.py \
+    --categories 0 1 2 3 4 5 6 7 8 9 \
+    --device cuda \
+    --num_steps 20 \
+    --batch_size 10
 ```
 
 ### 4. Evaluate Full PIE-Bench Results
@@ -47,6 +56,7 @@ python scripts/run_evaluation.py \
 --category C               # Category 0-9 (default: 0)
 --device {auto|cuda|cpu}   # Device (default: auto=cpu)
 --num_steps N              # DDIM steps (default: 10)
+--batch_size {auto|N}      # Batch size (default: auto=detect automatically)
 ```
 
 ### run_pie_bench_full.py
@@ -54,6 +64,7 @@ python scripts/run_evaluation.py \
 --categories C1 C2 ...     # Categories to process (default: all 0-9)
 --device {auto|cuda|cpu}   # Device (default: auto=cpu)
 --num_steps N              # DDIM steps (default: 50)
+--batch_size {auto|N}      # Batch size (default: auto=detect automatically)
 ```
 
 **DDIM Steps:**
@@ -61,9 +72,18 @@ python scripts/run_evaluation.py \
 - **20 steps**: Balanced
 - **50 steps**: Best quality, use with CUDA
 
+**Batch Processing (Automatic):**
+- Batch size is automatically detected based on GPU memory
+- **A100 (80GB)**: Batch size ~10-12 (expected ~7-8x speedup)
+- **A100 (40GB)**: Batch size ~6-8 (expected ~6-7x speedup)
+- **L4/RTX 4090 (24GB)**: Batch size ~3-4 (expected ~3-4x speedup)
+- **RTX 3070 Ti (8GB)**: Batch size 1 (no batching, sequential)
+- Override with `--batch_size N` to manually set batch size
+
 **Memory Issues?**
 - Use `--device cpu` 
 - Reduce `--num_steps` to 10 or less
+- Reduce `--batch_size` to 1 (disable batching)
 
 ## Output Structure
 
