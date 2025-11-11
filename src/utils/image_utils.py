@@ -75,63 +75,17 @@ def image2latent(vae, image):
 
 
 @torch.no_grad()
-def images2latent_batch(vae, images):
-    """
-    Convert multiple images to latent representations using VAE encoder (batched).
-    
-    Args:
-        vae: VAE model from Stable Diffusion
-        images: List of images (PIL.Image or numpy array) or numpy array of shape [N, H, W, 3]
-        
-    Returns:
-        torch.Tensor: Latent representations of shape [N, 4, H//8, W//8]
-    """
-    with torch.no_grad():
-        # Convert all images to numpy arrays
-        image_arrays = []
-        for img in images:
-            if type(img) is Image.Image:
-                img = np.array(img)
-            elif type(img) is torch.Tensor:
-                if img.dim() == 4:
-                    # Already batched tensor
-                    vae_dtype = getattr(vae, "dtype", torch.float32)
-                    img_tensor = img.to(device=vae.device, dtype=vae_dtype)
-                    latents = vae.encode(img_tensor)['latent_dist'].mean
-                    return latents * 0.18215
-                else:
-                    img = img.cpu().numpy()
-            image_arrays.append(img)
-        
-        # Stack into batch
-        batch_images = np.stack(image_arrays, axis=0)  # [N, H, W, 3]
-        
-        # Normalize to [-1, 1]
-        batch_images = torch.from_numpy(batch_images).float() / 127.5 - 1
-        vae_dtype = getattr(vae, "dtype", torch.float32)
-        batch_images = batch_images.permute(0, 3, 1, 2).to(device=vae.device, dtype=vae_dtype)  # [N, 3, H, W]
-        
-        # Encode to latent (batched)
-        latents = vae.encode(batch_images)['latent_dist'].mean
-        latents = latents * 0.18215  # Scaling factor
-    
-    return latents
-
-
-@torch.no_grad()
 def latent2image(vae, latents, return_type='np'):
     """
     Convert latent representation back to image using VAE decoder.
     
     Args:
         vae: VAE model from Stable Diffusion
-        latents: Latent tensor of shape [1, 4, H, W] or [N, 4, H, W]
+        latents: Latent tensor
         return_type: 'np' for numpy array, 'pt' for torch tensor
         
     Returns:
-        numpy.ndarray or torch.Tensor: Decoded image(s)
-        - If latents is [1, 4, H, W]: returns single image
-        - If latents is [N, 4, H, W]: returns batch of images
+        numpy.ndarray or torch.Tensor: Decoded image
     """
     latents = 1 / 0.18215 * latents.detach()
     latents = latents.to(dtype=getattr(vae, "dtype", latents.dtype))
@@ -141,9 +95,6 @@ def latent2image(vae, latents, return_type='np'):
         image = (image / 2 + 0.5).clamp(0, 1)
         image = image.cpu().permute(0, 2, 3, 1).numpy()
         image = (image * 255).astype(np.uint8)
-        # If single image, return first element
-        if image.shape[0] == 1:
-            return image[0]
     
     return image
 
