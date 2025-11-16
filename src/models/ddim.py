@@ -34,7 +34,7 @@ from src.utils.ddim_utils import (
 from src.utils.prompt_to_prompt import PromptToPromptController
 
 
-DEFAULT_MODEL_ID = "stable-diffusion-v1-5/stable-diffusion-v1-5"
+DEFAULT_MODEL_ID = "runwayml/stable-diffusion-v1-5"
 
 
 @dataclass
@@ -135,6 +135,12 @@ class DDIMInversion:
             self.setup.device,
         )
         
+        uncond_embeddings = get_null_embedding(
+            self.setup.text_encoder,
+            self.setup.tokenizer,
+            self.setup.device,
+        )
+        
         zt = z0
         # ✅ Go backwards: from end to start
         for i in range(len(timesteps) - 1, 0, -1):
@@ -147,6 +153,7 @@ class DDIMInversion:
                 t_curr,
                 text_embeddings,
                 guidance_scale=self.config.inversion_guidance_scale,
+                uncond_embeddings=uncond_embeddings,
             )
             zt = ddim_step_reverse(scheduler, noise_pred, t_curr, t_prev, zt)
             latents.append(zt)
@@ -154,11 +161,7 @@ class DDIMInversion:
         return {
             "latents": latents,
             "text_embeddings": text_embeddings,
-            "uncond_embeddings": get_null_embedding(
-                self.setup.text_encoder,
-                self.setup.tokenizer,
-                self.setup.device,
-            ),
+            "uncond_embeddings": uncond_embeddings,
         }
 
     @torch.no_grad()
