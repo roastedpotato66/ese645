@@ -1,9 +1,6 @@
 """
 Direct Inversion baseline implementation.
 Combines DDIM inversion with Prompt-to-Prompt editing.
-
-Reference: PIE-Bench paper, Table 1
-- Quick and simple editing but less flexible
 """
 
 import os
@@ -60,7 +57,8 @@ class DirectInversionEditor(BaseEditor):
             beta_end=0.012,
             beta_schedule="scaled_linear",
             clip_sample=False,
-            set_alpha_to_one=False
+            set_alpha_to_one=False,
+            steps_offset=1
         )
         
         # Decide dtype based on device to save GPU memory
@@ -281,8 +279,12 @@ class DirectInversionEditor(BaseEditor):
         if verbose:
             print("\n[3/3] Performing P2P editing...")
         # Parse blend words if provided
-        if blend_word is not None:
-            blend_words = [blend_word.split()[0], blend_word.split()[1]]
+        if blend_word is not None and blend_word.strip():
+            blend_word_parts = blend_word.split()
+            if len(blend_word_parts) >= 2:
+                blend_words = [blend_word_parts[0], blend_word_parts[1]]
+            else:
+                blend_words = None  # Invalid blend_word, skip blending
         else:
             blend_words = None
         
