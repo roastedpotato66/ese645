@@ -59,8 +59,7 @@ python scripts/run_pie_bench_sample.py --device cuda --num_steps 5 --num_images 
 ```
 
 ### Run All Images from PIE-Bench
-``` 
-python scripts/run_pie_bench_sample.py --device cuda --num_steps 5 --num_images 5 --category 0 --model ddim
+
 ```
 python scripts/run_pie_bench_full.py --device cuda --num_steps 30 --categories 0 1 2 3 4 5 6 7 8 9
 ```
