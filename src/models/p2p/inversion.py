@@ -223,8 +223,9 @@ class DirectInversion:
         """
         self.init_prompt(prompt)
         
-        # Register attention control (placeholder - will be implemented later)
-        # register_attention_control(self.model, None)
+        # Register attention control (resets any previous hooks)
+        from .attention_control import register_attention_control
+        register_attention_control(self.model, None)
         
         # Perform DDIM inversion
         image_rec, ddim_latents, image_rec_latent = self.ddim_inversion(image_gt, verbose=verbose)

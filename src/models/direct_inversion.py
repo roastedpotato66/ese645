@@ -10,11 +10,12 @@ import os
 import torch
 import numpy as np
 from PIL import Image
-from diffusers import StableDiffusionPipeline, DDIMScheduler
+from diffusers import StableDiffusionPipeline
 
 from .base_editor import BaseEditor
 from .p2p.inversion import DirectInversion
 from .p2p.attention_control import AttentionStore, make_controller
+from .p2p.scheduler_dev import DDIMSchedulerDev  # Use author's custom scheduler
 from src.utils.image_utils import load_512, latent2image
 from src.utils.diffusion_utils import direct_inversion_p2p_guidance_forward
 
@@ -42,169 +43,31 @@ class DirectInversionEditor(BaseEditor):
         """
         super().__init__(device=device, num_ddim_steps=num_ddim_steps)
         
-        # Force CPU mode if specified (disable MPS completely)
-        if device == 'cpu':
-            os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '0'
-            # Explicitly disable MPS
-            if hasattr(torch.backends, 'mps'):
-                torch.backends.mps.is_available = lambda: False
-        elif isinstance(device, str) and device.startswith("cuda") and os.name != 'nt':
-            os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
-        
-        print(f"Loading Stable Diffusion model: {model_id}")
-        print(f"Device: {device}")
-        
-        # Initialize DDIM scheduler (matching author's configuration exactly)
-        self.scheduler = DDIMScheduler(
+        # Initialize DDIM scheduler (using author's custom DDIMSchedulerDev)
+        self.scheduler = DDIMSchedulerDev(
             beta_start=0.00085,
             beta_end=0.012,
             beta_schedule="scaled_linear",
             clip_sample=False,
             set_alpha_to_one=False
-            # Note: No steps_offset - author doesn't use it
+            # Note: Using DDIMSchedulerDev which matches author's diffusers==0.10.0 behavior
         )
         
-        # Decide dtype based on device to save GPU memory
-        if isinstance(device, str) and device.startswith("cuda"):
-            pipeline_dtype = torch.float16
-        else:
-            pipeline_dtype = torch.float32
-        self.pipeline_dtype = pipeline_dtype
-
-        # Load Stable Diffusion model
-        # Note: This will download the model on first run (~4GB)
-        try:
-            self.model = StableDiffusionPipeline.from_pretrained(
-                model_id,
-                scheduler=self.scheduler,
-                torch_dtype=pipeline_dtype,
-                safety_checker=None,  # Disable safety checker to save memory
-                requires_safety_checker=False,
-                low_cpu_mem_usage=True if device == 'cpu' else False,
-                use_safetensors=False  # Use original PyTorch format
-            )
-        except Exception as e:
-            print(f"Error loading model: {e}")
-            print("Trying alternative loading method...")
-            # Try loading without safety checker in a different way
-            from diffusers import AutoencoderKL, UNet2DConditionModel
-            from transformers import CLIPTextModel, CLIPTokenizer
-            
-            self.tokenizer = CLIPTokenizer.from_pretrained(model_id, subfolder="tokenizer")
-            self.text_encoder = CLIPTextModel.from_pretrained(model_id, subfolder="text_encoder")
-            self.vae = AutoencoderKL.from_pretrained(model_id, subfolder="vae")
-            self.unet = UNet2DConditionModel.from_pretrained(model_id, subfolder="unet")
-            
-            # Create pipeline manually
-            self.model = StableDiffusionPipeline(
-                vae=self.vae,
-                text_encoder=self.text_encoder,
-                tokenizer=self.tokenizer,
-                unet=self.unet,
-                scheduler=self.scheduler,
-                safety_checker=None,
-                feature_extractor=None,
-                requires_safety_checker=False
-            )
+        # Load Stable Diffusion model (matching author's approach EXACTLY)
+        # Author uses simple loading in float32, then .to(device)
+        self.model = StableDiffusionPipeline.from_pretrained(
+            model_id,
+            scheduler=self.scheduler
+        ).to(device)
         
-        # Move to device AFTER loading (keep dtype conversions explicit)
-        self.model = self.model.to(device)
-
-        if isinstance(device, str) and device.startswith("cuda"):
-            try:
-                # Keep text encoder in fp32 for stability, others in fp16
-                self.model.unet = self.model.unet.to(device=device, dtype=pipeline_dtype)
-                self.model.vae = self.model.vae.to(device=device, dtype=pipeline_dtype)
-                if hasattr(self.model.unet, "to"):
-                    self.model.unet.to(memory_format=torch.channels_last)
-                if hasattr(self.model, "text_encoder"):
-                    self.model.text_encoder = self.model.text_encoder.to(device=device, dtype=torch.float32)
-            except Exception as e:
-                print(f"Warning: unable to cast modules to desired dtype ({pipeline_dtype}): {e}")
-        elif device == 'cpu':
-            # Ensure all components on CPU with float32 (default)
-            try:
-                self.model.unet = self.model.unet.to(device=device, dtype=pipeline_dtype)
-                self.model.vae = self.model.vae.to(device=device, dtype=pipeline_dtype)
-                if hasattr(self.model, "text_encoder"):
-                    self.model.text_encoder = self.model.text_encoder.to(device=device, dtype=torch.float32)
-            except Exception:
-                pass
-
-        # Determine low-resource mode for smaller GPUs
-        self.low_resource = False
-        if isinstance(device, str) and device.startswith("cuda") and torch.cuda.is_available():
-            try:
-                device_obj = torch.device(device)
-            except Exception:
-                device_obj = torch.device("cuda")
-            device_index = device_obj.index if device_obj.index is not None else torch.cuda.current_device()
-            try:
-                total_mem = torch.cuda.get_device_properties(device_index).total_memory
-            except Exception:
-                total_mem = None
-            if total_mem is not None and total_mem <= 10 * 1024 ** 3:
-                self.low_resource = True
-
-        if isinstance(device, str) and device.startswith("cuda"):
-            try:
-                self.model.enable_attention_slicing()
-            except Exception:
-                pass
-            if hasattr(self.model, "enable_xformers_memory_efficient_attention"):
-                try:
-                    self.model.enable_xformers_memory_efficient_attention()
-                except Exception:
-                    pass
-            try:
-                self.model.enable_vae_slicing()
-                self.model.enable_vae_tiling()
-            except Exception:
-                pass
-            if self.low_resource and os.name != 'nt':
-                try:
-                    self.model.enable_sequential_cpu_offload()
-                except Exception:
-                    pass
-        
-        # For CPU, use slower but more stable attention
-        if device == 'cpu':
-            try:
-                self.model.enable_attention_slicing(slice_size=1)  # Reduce memory
-            except:
-                pass
-            # Disable xformers if enabled
-            if hasattr(self.model, 'disable_xformers_memory_efficient_attention'):
-                try:
-                    self.model.disable_xformers_memory_efficient_attention()
-                except:
-                    pass
-        
-        try:
-            print("Setting timesteps...")
-            self.model.scheduler.set_timesteps(self.num_ddim_steps)
-            print(f"✓ Timesteps set to {self.num_ddim_steps}")
-        except Exception as e:
-            print(f"❌ Error setting timesteps: {e}")
-            import traceback
-            traceback.print_exc()
-            raise
+        # Set timesteps (matching author)
+        self.model.scheduler.set_timesteps(self.num_ddim_steps)
         
         # Initialize Direct Inversion
-        try:
-            print("Initializing Direct Inversion...")
-            self.inverter = DirectInversion(
-                model=self.model,
-                num_ddim_steps=self.num_ddim_steps
-            )
-            print("✓ Direct Inversion initialized")
-        except Exception as e:
-            print(f"❌ Error initializing inverter: {e}")
-            import traceback
-            traceback.print_exc()
-            raise
-        
-        print("✅ Direct Inversion Editor fully initialized!")
+        self.inverter = DirectInversion(
+            model=self.model,
+            num_ddim_steps=self.num_ddim_steps
+        )
     
     def edit_image(
         self,
@@ -271,8 +134,7 @@ class DirectInversionEditor(BaseEditor):
             latent=x_t,
             num_inference_steps=self.num_ddim_steps,
             guidance_scale=guidance_scale,
-            generator=None,
-            low_resource=self.low_resource
+            generator=None
         )
         reconstruct_image = latent2image(vae=self.model.vae, latents=reconstruct_latent)[0]
         if verbose:
@@ -281,13 +143,18 @@ class DirectInversionEditor(BaseEditor):
         # Step 3: Edit with P2P
         if verbose:
             print("\n[3/3] Performing P2P editing...")
-        # Parse blend words if provided
-        if blend_word is not None and blend_word.strip():
+        # Parse blend words if provided (match author's format)
+        # Author uses: (((word1,), (word2,))) format
+        if blend_word is not None and isinstance(blend_word, str) and blend_word.strip():
             blend_word_parts = blend_word.split()
             if len(blend_word_parts) >= 2:
-                blend_words = [blend_word_parts[0], blend_word_parts[1]]
+                # Format: (((word_from_source,), (word_from_target,)))
+                blend_words = (((blend_word_parts[0],), (blend_word_parts[1],)))
             else:
                 blend_words = None  # Invalid blend_word, skip blending
+        elif blend_word is not None and not isinstance(blend_word, str):
+            # Already in correct format (tuple)
+            blend_words = blend_word
         else:
             blend_words = None
         
@@ -313,8 +180,7 @@ class DirectInversionEditor(BaseEditor):
             latent=x_t,
             num_inference_steps=self.num_ddim_steps,
             guidance_scale=guidance_scale,
-            generator=None,
-            low_resource=self.low_resource
+            generator=None
         )
         
         edited_images = latent2image(vae=self.model.vae, latents=edited_latent)

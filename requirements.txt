@@ -7,10 +7,11 @@ torchvision>=0.15.0
 numpy>=1.24.0
 Pillow>=9.5.0
 
-# Diffusion Models
-diffusers>=0.21.0
-transformers>=4.30.0
-accelerate>=0.20.0
+# Diffusion Models (matching author's versions for exact reproducibility)
+diffusers==0.10.0
+transformers
+accelerate
+ftfy
 
 # Evaluation Metrics
 torchmetrics>=1.0.0
