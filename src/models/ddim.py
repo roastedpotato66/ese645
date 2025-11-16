@@ -10,8 +10,8 @@ This module exposes `DDIMEditor`, a lightweight wrapper that:
 from __future__ import annotations
 
 from contextlib import contextmanager
-from dataclasses import dataclass
-from typing import Any, Dict, Optional, Tuple
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional, Tuple
 
 import torch
 from diffusers import AutoencoderKL, DDIMScheduler, UNet2DConditionModel
@@ -48,6 +48,10 @@ class DDIMConfig:
     use_prompt_to_prompt: bool = True
     self_replace_steps: float = 0.6
     cross_replace_steps: float = 0.4
+    p2p_attention_dtype: str = "float16"
+    p2p_store_self_attention: bool = True
+    p2p_attention_step_stride: int = 4
+    p2p_layer_keywords: List[str] = field(default_factory=list)
 
     def update(self, overrides: Optional[Dict[str, Any]] = None):
         if not overrides:
@@ -252,6 +256,18 @@ class DDIMEditor:
             return torch.float32
         return torch.float16
 
+    @staticmethod
+    def _resolve_attention_dtype(name: str) -> torch.dtype:
+        mapping = {
+            "fp32": torch.float32,
+            "float32": torch.float32,
+            "fp16": torch.float16,
+            "float16": torch.float16,
+            "bf16": torch.bfloat16,
+            "bfloat16": torch.bfloat16,
+        }
+        return mapping.get(name.lower(), torch.float16)
+
     def edit_image(
         self,
         image_path: str,
@@ -345,6 +361,10 @@ class DDIMEditor:
         controller = PromptToPromptController(
             self_replace_steps=self.config.self_replace_steps,
             cross_replace_steps=self.config.cross_replace_steps,
+            store_self_attention=self.config.p2p_store_self_attention,
+            attention_dtype=self._resolve_attention_dtype(self.config.p2p_attention_dtype),
+            step_stride=max(1, self.config.p2p_attention_step_stride),
+            layer_keywords=self.config.p2p_layer_keywords or None,
         )
         if blend_word:
             mask = self._compute_replace_mask(prompt_tar, blend_word)

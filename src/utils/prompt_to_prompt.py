@@ -92,9 +92,17 @@ class PromptToPromptController:
         self,
         self_replace_steps: float = 0.8,
         cross_replace_steps: float = 0.4,
+        store_self_attention: bool = True,
+        attention_dtype: torch.dtype = torch.float32,
+        step_stride: int = 1,
+        layer_keywords: Optional[List[str]] = None,
     ):
         self.self_replace_steps = self_replace_steps
         self.cross_replace_steps = cross_replace_steps
+        self.store_self_attention = store_self_attention
+        self.attention_dtype = attention_dtype
+        self.step_stride = max(1, step_stride)
+        self.layer_keywords = layer_keywords
         self.mode: str = "record"
         self.total_steps: int = 0
         self.current_step: int = 0
@@ -137,6 +145,9 @@ class PromptToPromptController:
         self.replace_token_mask = mask.clone()
 
     def modify(self, attention_probs: torch.Tensor, is_cross_attention: bool, place_in_unet: str) -> torch.Tensor:
+        if not self._layer_allowed(place_in_unet):
+            return attention_probs
+
         if self.mode == "record":
             self._save_attention(attention_probs, is_cross_attention, place_in_unet)
             self.stats["record_calls"] += 1
@@ -148,10 +159,14 @@ class PromptToPromptController:
 
         key = (place_in_unet, is_cross_attention)
         store = self.attention_store.get(key)
-        if store is None or self.current_step >= len(store):
+        if store is None:
             return attention_probs
 
-        reference = store[self.current_step]
+        ref_step_idx = (self.current_step // self.step_stride) * self.step_stride
+        if ref_step_idx >= len(store):
+            return attention_probs
+
+        reference = store[ref_step_idx]
         if reference is None:
             return attention_probs
 
@@ -174,9 +189,16 @@ class PromptToPromptController:
         if self.total_steps <= 0:
             return
 
+        if not is_cross_attention and not self.store_self_attention:
+            return
+
+        if self.current_step % self.step_stride != 0:
+            return
+
         key = (place_in_unet, is_cross_attention)
         store = self.attention_store.setdefault(key, [None] * self.total_steps)
-        store[self.current_step] = attention_probs.detach().float().cpu()
+        tensor = attention_probs.detach().to(self.attention_dtype).cpu()
+        store[self.current_step] = tensor
 
     def _should_replace(self, is_cross_attention: bool) -> bool:
         if self.total_steps <= 1:
@@ -185,12 +207,22 @@ class PromptToPromptController:
         threshold = self.cross_replace_steps if is_cross_attention else self.self_replace_steps
         return ratio <= threshold
 
+    def _layer_allowed(self, place_in_unet: str) -> bool:
+        if not self.layer_keywords:
+            return True
+        lowered = place_in_unet.lower()
+        return any(keyword.lower() in lowered for keyword in self.layer_keywords)
+
     def summary(self) -> Dict[str, object]:
         return {
             "mode": self.mode,
             "total_steps": self.total_steps,
             "self_replace_steps": self.self_replace_steps,
             "cross_replace_steps": self.cross_replace_steps,
+             "store_self_attention": self.store_self_attention,
+             "attention_dtype": str(self.attention_dtype),
+             "step_stride": self.step_stride,
+             "layer_keywords": self.layer_keywords,
             "record_calls": self.stats["record_calls"],
             "apply_calls": self.stats["apply_calls"],
             "cross_replacements": self.stats["cross_replacements"],
