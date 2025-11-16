@@ -45,6 +45,27 @@ The PIE-Bench dataset is already downloaded in `data/PIE-Bench_v1/`:
 - Annotations in `mapping_file.json`
 - Images in `annotation_images/`
 
-## Usage
+## Example Usage
 
-See usage markdown in `scripts/` for different models.
+### Run Single Test
+
+```
+python scripts/test_ddim_single.py --device cuda --num_steps 5
+```
+
+### Run Sample Images from PIE-Bench
+``` 
+python scripts/run_pie_bench_sample.py --device cuda --num_steps 5 --num_images 5 --category 0 --model ddim
+```
+
+### Run All Images from PIE-Bench
+
+```
+python scripts/run_pie_bench_full.py --device cuda --num_steps 30 --categories 0 1 2 3 4 5 6 7 8 9
+```
+
+### Evaluate Generated Results and Save Metrics
+```
+python scripts/run_evaluation.py --tgt_image_folder outputs/ddim/annotation_images --output_csv results/ddim_metrics.csv
+```
+
