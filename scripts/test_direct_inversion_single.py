@@ -24,6 +24,7 @@ if args.device == 'cpu' or args.device == 'auto':
 
 import torch
 import json
+from PIL import Image # Added missing import for Image
 
 # Add parent directory to path (since we're in scripts/)
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -41,6 +42,11 @@ def main():
     print(f"Using device: {device}")
     print(f"DDIM steps: {args.num_steps}")
     
+    # --- P2P Parameters (Tune these for best results) ---
+    SELF_REPLACE_STEPS = 0.6  # Structure preservation
+    CROSS_REPLACE_STEPS = 0.4 # Edit fidelity
+    # ----------------------------------------------------
+    
     # Load one sample from PIE-Bench
     data_path = "data/PIE-Bench_v1"
     annotation_file = f"{data_path}/mapping_file.json"
@@ -48,16 +54,17 @@ def main():
     with open(annotation_file, 'r') as f:
         annotations = json.load(f)
     
-    # Get first image from category 0
+    # Get a specific image for testing
+    target_image_path = "0_random_140/000000000004.jpg"
     sample_id = None
     for img_id, item in annotations.items():
-        if item['editing_type_id'] == '0':
+        if item.get('image_path') == target_image_path:
             sample_id = img_id
             sample_item = item
             break
     
     if sample_id is None:
-        print("No sample found in category 0!")
+        print(f"Could not find sample with image path: {target_image_path}")
         return
     
     # Get image details
@@ -90,10 +97,24 @@ def main():
         prompt_src=prompt_src,
         prompt_tar=prompt_tar,
         blend_word=blend_word,
+        self_replace_steps=SELF_REPLACE_STEPS,
+        cross_replace_steps=CROSS_REPLACE_STEPS,
         output_path=f"outputs/test_direct_inversion_{sample_id}.png",
         return_intermediate=True
     )
     
+    # Save intermediate images if they exist
+    if isinstance(result, dict):
+        # Create a directory for the intermediates
+        intermediate_dir = Path(f"outputs/intermediate_{sample_id}")
+        intermediate_dir.mkdir(exist_ok=True)
+        
+        # Save each image
+        for key, img in result.items():
+            if isinstance(img, Image.Image):
+                img.save(intermediate_dir / f"{key}.png")
+                print(f"Saved intermediate image: {intermediate_dir / f'{key}.png'}")
+
     print(f"\n{'='*60}")
     print("Test completed successfully!")
     print(f"Output saved to: outputs/test_direct_inversion_{sample_id}.png")
