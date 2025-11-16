@@ -16,6 +16,7 @@ from tqdm import tqdm
 # Add parent directory to path (since we're in scripts/)
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from src.models.direct_inversion import DirectInversionEditor
+from src.utils.logging_utils import setup_logger, log_error
 
 def main():
     parser = argparse.ArgumentParser()
@@ -37,7 +38,10 @@ def main():
     
     print(f"Device: {device}, Steps: {args.num_steps}")
     print(f"Categories: {args.categories}")
-    
+
+    # Set up logger
+    logger = setup_logger(log_file="logs/pie_bench.log")
+
     # Load annotations
     annotation_file = "data/PIE-Bench_v1/mapping_file.json"
     with open(annotation_file, 'r') as f:
@@ -78,7 +82,7 @@ def main():
             )
             success += 1
         except Exception as e:
-            progress.write(f"Error on {img_id}: {e}")
+            log_error(logger, f"Error on {img_id}: {e}", exc_info=True)
             errors += 1
             continue
 

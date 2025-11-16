@@ -60,8 +60,7 @@ class DirectInversionEditor(BaseEditor):
             beta_end=0.012,
             beta_schedule="scaled_linear",
             clip_sample=False,
-            set_alpha_to_one=False,
-            steps_offset=1
+            set_alpha_to_one=False
         )
         
         # Decide dtype based on device to save GPU memory
