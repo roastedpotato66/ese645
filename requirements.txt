@@ -29,5 +29,3 @@ opencv-python>=4.8.0
 # Development
 pytest>=7.4.0
 ipython>=8.14.0
-
-debug_outputs/
