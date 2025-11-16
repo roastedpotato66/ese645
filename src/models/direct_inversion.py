@@ -54,14 +54,14 @@ class DirectInversionEditor(BaseEditor):
         print(f"Loading Stable Diffusion model: {model_id}")
         print(f"Device: {device}")
         
-        # Initialize DDIM scheduler
+        # Initialize DDIM scheduler (matching author's configuration exactly)
         self.scheduler = DDIMScheduler(
             beta_start=0.00085,
             beta_end=0.012,
             beta_schedule="scaled_linear",
             clip_sample=False,
-            set_alpha_to_one=False,
-            steps_offset=1
+            set_alpha_to_one=False
+            # Note: No steps_offset - author doesn't use it
         )
         
         # Decide dtype based on device to save GPU memory

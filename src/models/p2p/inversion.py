@@ -206,7 +206,12 @@ class DirectInversion:
     @torch.no_grad()
     def invert(self, image_gt, prompt, guidance_scale=7.5, verbose=True):
         """
-        Main inversion method with noise tracking.
+        Main inversion method with latent offset tracking (DirectInversion approach).
+        
+        This follows the author's offset_calculate() method exactly:
+        - Simulates forward denoising with CFG
+        - Computes latent-space offsets between actual and predicted
+        - Maintains corrected trajectory through timesteps
         
         Args:
             image_gt: Ground truth image (numpy array, 512x512x3)
@@ -221,31 +226,45 @@ class DirectInversion:
         # Register attention control (placeholder - will be implemented later)
         # register_attention_control(self.model, None)
         
-        # Perform inversion
+        # Perform DDIM inversion
         image_rec, ddim_latents, image_rec_latent = self.ddim_inversion(image_gt, verbose=verbose)
         
-        # Track noise predictions during inversion
-        # This is used for Direct Inversion's key feature
-        uncond_embeddings, cond_embeddings = self.context.chunk(2)
+        # Calculate latent offsets following author's approach
+        # This is the KEY difference from simple DDIM inversion
         noise_loss_list = []
         
-        latent = image_rec_latent
+        # Start from noise and simulate denoising with both prompts
+        # context.shape[0]//2 gives us the number of prompts (2: source + target)
+        latent_cur = torch.concat([ddim_latents[-1]] * (self.context.shape[0] // 2))
+        
         for i in range(self.num_ddim_steps):
-            t = self.model.scheduler.timesteps[len(self.model.scheduler.timesteps) - i - 1]
+            # Get the actual previous latent from inversion
+            latent_prev = torch.concat([ddim_latents[len(ddim_latents) - i - 2]] * latent_cur.shape[0])
+            t = self.model.scheduler.timesteps[i]
             
-            # Get noise predictions for both source and target
-            cond_src = cond_embeddings[[0]]
-            cond_tar = cond_embeddings[[1]]
+            with torch.no_grad():
+                # Predict noise with BOTH unconditional and conditional (for CFG)
+                # Concatenate latent_cur twice for unconditional and conditional
+                latent_input = torch.concat([latent_cur] * 2)
+                noise_pred = self.get_noise_pred_single(latent_input, t, self.context)
+                noise_pred_uncond, noise_pred_cond = noise_pred.chunk(2)
+                
+                # Apply Classifier-Free Guidance
+                noise_pred_w_guidance = noise_pred_uncond + guidance_scale * (noise_pred_cond - noise_pred_uncond)
+                
+                # Predict what the previous latent should be
+                latents_prev_rec, _ = self.prev_step(noise_pred_w_guidance, t, latent_cur)
+                
+                # Calculate LATENT offset (not noise offset!)
+                # This is the difference between actual and predicted
+                loss = latent_prev - latents_prev_rec
             
-            noise_pred_src = self.get_noise_pred_single(latent, t, cond_src)
-            noise_pred_tar = self.get_noise_pred_single(latent, t, cond_tar)
+            # Store the offset for use during forward pass
+            noise_loss_list.append(loss.detach())
             
-            # Compute noise difference and scale
-            latent, difference_scale = self.prev_step(noise_pred_src, t, latent)
-            
-            # Store noise loss for later use
-            noise_loss = noise_pred_tar - noise_pred_src
-            noise_loss_list.append((noise_loss * difference_scale).to(dtype=self.model.unet.dtype))
+            # Update current latent with correction for next iteration
+            # This maintains the corrected trajectory through the denoising process
+            latent_cur = latents_prev_rec + loss
         
         return image_rec, image_rec_latent, ddim_latents, noise_loss_list
 
