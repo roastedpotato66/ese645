@@ -428,6 +428,7 @@ def build_editor(args) -> DDIMEditor:
     return DDIMEditor(
         device=args.device,
         num_inference_steps=args.num_steps,
+        num_inversion_steps=args.num_inversion_steps,
         guidance_scale=args.guidance_scale,
         model_id=args.model_id or "runwayml/stable-diffusion-v1-5",
         config_overrides=overrides,
@@ -437,7 +438,8 @@ def build_editor(args) -> DDIMEditor:
 def parse_args():
     parser = argparse.ArgumentParser(description="DDIM debugging tool")
     parser.add_argument("--device", type=str, default="auto", choices=["auto", "cuda", "mps", "cpu"])
-    parser.add_argument("--num_steps", type=int, default=50)
+    parser.add_argument("--num_steps", type=int, default=50, help="Number of editing steps")
+    parser.add_argument("--num_inversion_steps", type=int, default=100, help="Number of inversion steps")
     parser.add_argument("--guidance_scale", type=float, default=7.5)
     parser.add_argument("--model_id", type=str, default=None)
     parser.add_argument("--sample_id", type=str, default=None, help="PIE-Bench sample id")

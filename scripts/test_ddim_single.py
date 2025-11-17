@@ -22,7 +22,9 @@ def parse_args():
     parser.add_argument('--device', type=str, default='auto', choices=['auto', 'cuda', 'mps', 'cpu'],
                         help='Device to use for inference')
     parser.add_argument('--num_steps', type=int, default=50,
-                        help='Number of DDIM steps (use fewer for CPU)')
+                        help='Number of DDIM editing steps (use fewer for CPU)')
+    parser.add_argument('--num_inversion_steps', type=int, default=100,
+                        help='Number of DDIM inversion steps (higher = better recon)')
     parser.add_argument('--guidance_scale', type=float, default=7.5,
                         help='Classifier-free guidance scale during editing')
     parser.add_argument('--model_id', type=str, default=None,
@@ -59,7 +61,8 @@ def main():
     device = resolve_device(args.device)
 
     print(f"Using device: {device}")
-    print(f"DDIM steps: {args.num_steps}")
+    print(f"Editing steps: {args.num_steps}")
+    print(f"Inversion steps: {args.num_inversion_steps}")
     print(f"Guidance scale: {args.guidance_scale}")
 
     sample_id, sample_item = load_sample()
@@ -82,6 +85,7 @@ def main():
     editor = DDIMEditor(
         device=device,
         num_inference_steps=args.num_steps,
+        num_inversion_steps=args.num_inversion_steps,
         guidance_scale=args.guidance_scale,
         model_id=args.model_id or "runwayml/stable-diffusion-v1-5",
     )

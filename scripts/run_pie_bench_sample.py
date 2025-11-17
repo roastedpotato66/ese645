@@ -30,6 +30,8 @@ def _build_editor(device: str, args: argparse.Namespace):
         "device": device,
         "num_inference_steps": args.num_steps,
     }
+    if args.num_inversion_steps is not None:
+        model_kwargs["num_inversion_steps"] = args.num_inversion_steps
     if args.model_id:
         model_kwargs["model_id"] = args.model_id
     if args.guidance_scale:
@@ -48,7 +50,8 @@ def main():
     parser.add_argument('--num_images', type=int, default=5, help='Number of images to process')
     parser.add_argument('--category', type=str, default='0', help='Category to process')
     parser.add_argument('--device', type=str, default='auto', choices=['auto', 'cuda', 'mps', 'cpu'])
-    parser.add_argument('--num_steps', type=int, default=10, help='Number of inference steps (use 10 for CPU, 50 for CUDA)')
+    parser.add_argument('--num_steps', type=int, default=10, help='Number of editing steps (use 10 for CPU, 50 for CUDA)')
+    parser.add_argument('--num_inversion_steps', type=int, default=None, help='Optional override for inversion steps (defaults to editing steps when unset)')
     parser.add_argument('--guidance_scale', type=float, default=None, help='Optional override for guidance scale')
     parser.add_argument('--precision', type=str, choices=['fp32', 'fp16'], default=None, help='Optional precision override')
     parser.add_argument('--verbose', action='store_true', help='Print detailed logs for each image')
@@ -64,7 +67,8 @@ def main():
         device = args.device
     
     print(f"Model: {args.model}")
-    print(f"Device: {device}, Steps: {args.num_steps}, Images: {args.num_images}")
+    inv_steps = args.num_inversion_steps or args.num_steps
+    print(f"Device: {device}, Edit steps: {args.num_steps}, Inversion steps: {inv_steps}, Images: {args.num_images}")
     
     # Load annotations
     annotation_file = "data/PIE-Bench_v1/mapping_file.json"
