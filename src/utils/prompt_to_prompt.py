@@ -96,6 +96,7 @@ class PromptToPromptController:
         attention_dtype: torch.dtype = torch.float32,
         step_stride: int = 1,
         layer_keywords: Optional[List[str]] = None,
+        max_attention_size: int = 32 * 32,
     ):
         self.self_replace_steps = self_replace_steps
         self.cross_replace_steps = cross_replace_steps
@@ -103,16 +104,18 @@ class PromptToPromptController:
         self.attention_dtype = attention_dtype
         self.step_stride = max(1, step_stride)
         self.layer_keywords = layer_keywords
+        self.max_attention_size = max_attention_size
         self.mode: str = "record"
         self.total_steps: int = 0
         self.current_step: int = 0
-        self.attention_store: Dict[Tuple[str, bool], List[Optional[torch.Tensor]]] = {}
+        self.attention_store: Dict[Tuple[str, bool], Dict[int, torch.Tensor]] = {}
         self.replace_token_mask: Optional[torch.Tensor] = None
         self.stats = {
             "record_calls": 0,
             "apply_calls": 0,
             "cross_replacements": 0,
             "self_replacements": 0,
+            "skipped_large": 0,
         }
 
     def build_processors(self, unet) -> Dict[str, PromptToPromptAttnProcessor]:
@@ -134,6 +137,7 @@ class PromptToPromptController:
             self.stats["apply_calls"] = 0
             self.stats["cross_replacements"] = 0
             self.stats["self_replacements"] = 0
+            self.stats["skipped_large"] = 0
 
     def set_step(self, step_index: int):
         self.current_step = step_index
@@ -163,20 +167,31 @@ class PromptToPromptController:
             return attention_probs
 
         ref_step_idx = (self.current_step // self.step_stride) * self.step_stride
-        if ref_step_idx >= len(store):
-            return attention_probs
-
-        reference = store[ref_step_idx]
+        reference = store.get(ref_step_idx)
         if reference is None:
             return attention_probs
 
         reference = reference.to(attention_probs.device, attention_probs.dtype)
-        if is_cross_attention and self.replace_token_mask is not None:
-            mask = self.replace_token_mask[..., : reference.shape[-1]]
-            mask = mask.to(attention_probs.device, attention_probs.dtype)
-            attention_probs = reference * mask + attention_probs * (1.0 - mask)
+        if attention_probs.shape[0] % 2 == 0:
+            half = attention_probs.shape[0] // 2
+            uncond_part = attention_probs[:half]
+            cond_part = attention_probs[half:]
+
+            if is_cross_attention and self.replace_token_mask is not None:
+                mask = self.replace_token_mask[..., : reference.shape[-1]]
+                mask = mask.to(cond_part.device, cond_part.dtype)
+                cond_part = reference * mask + cond_part * (1.0 - mask)
+            else:
+                cond_part = reference
+
+            attention_probs = torch.cat([uncond_part, cond_part], dim=0)
         else:
-            attention_probs = reference
+            if is_cross_attention and self.replace_token_mask is not None:
+                mask = self.replace_token_mask[..., : reference.shape[-1]]
+                mask = mask.to(attention_probs.device, attention_probs.dtype)
+                attention_probs = reference * mask + attention_probs * (1.0 - mask)
+            else:
+                attention_probs = reference
 
         if is_cross_attention:
             self.stats["cross_replacements"] += 1
@@ -186,6 +201,11 @@ class PromptToPromptController:
         return attention_probs
 
     def _save_attention(self, attention_probs: torch.Tensor, is_cross_attention: bool, place_in_unet: str):
+        seq_len = attention_probs.shape[-1]
+        if seq_len > self.max_attention_size:
+            self.stats["skipped_large"] += 1
+            return
+
         if self.total_steps <= 0:
             return
 
@@ -196,9 +216,19 @@ class PromptToPromptController:
             return
 
         key = (place_in_unet, is_cross_attention)
-        store = self.attention_store.setdefault(key, [None] * self.total_steps)
-        tensor = attention_probs.detach().to(self.attention_dtype).cpu()
-        store[self.current_step] = tensor
+        if key not in self.attention_store:
+            self.attention_store[key] = {}
+
+        tensor = attention_probs.detach()
+        if tensor.shape[0] % 2 == 0:
+            half = tensor.shape[0] // 2
+            tensor = tensor[half:]
+
+        if tensor.dtype != self.attention_dtype:
+            tensor = tensor.to(self.attention_dtype)
+        tensor = tensor.cpu()
+
+        self.attention_store[key][self.current_step] = tensor
 
     def _should_replace(self, is_cross_attention: bool) -> bool:
         if self.total_steps <= 1:
@@ -227,7 +257,9 @@ class PromptToPromptController:
             "apply_calls": self.stats["apply_calls"],
             "cross_replacements": self.stats["cross_replacements"],
             "self_replacements": self.stats["self_replacements"],
+            "skipped_large": self.stats["skipped_large"],
             "stored_layers": len(self.attention_store),
+            "max_attention_size": self.max_attention_size,
         }
 
 
