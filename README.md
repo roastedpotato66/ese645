@@ -50,18 +50,18 @@ The PIE-Bench dataset is already downloaded in `data/PIE-Bench_v1/`:
 ### Run Single Test
 
 ```
-python scripts/test_ddim_single.py --device cuda --num_steps 30 --num_inversion_steps 100
+python scripts/test_ddim_single.py --device cuda --num_steps 30 --num_inversion_steps 50
 ```
 
 ### Run Sample Images from PIE-Bench
 ```
-python scripts/run_pie_bench_sample.py --device cuda --num_steps 30 --num_inversion_steps 100 --num_images 5 --category 0 --model ddim
+python scripts/run_pie_bench_sample.py --device cuda --num_steps 50 --num_inversion_steps 50 --num_images 5 --category 0 --model ddim
 ```
 
 ### Run All Images from PIE-Bench
 
 ```
-python scripts/run_pie_bench_full.py --device cuda --num_steps 30 --num_inversion_steps 100 --categories 0 1 2 3 4 5 6 7 8 9
+python scripts/run_pie_bench_full.py --device cuda --num_steps 50 --num_inversion_steps 50 --categories 0 1 2 3 4 5 6 7 8 9
 ```
 
 ### Evaluate Generated Results and Save Metrics

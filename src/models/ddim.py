@@ -51,8 +51,9 @@ class DDIMConfig:
     cross_replace_steps: float = 0.4
     p2p_attention_dtype: str = "float16"
     p2p_store_self_attention: bool = True
-    p2p_attention_step_stride: int = 4
+    p2p_attention_step_stride: int = 1
     p2p_layer_keywords: List[str] = field(default_factory=list)
+    p2p_max_attention_size: int = 32 * 32
 
     def update(self, overrides: Optional[Dict[str, Any]] = None):
         if not overrides:
@@ -375,6 +376,7 @@ class DDIMEditor:
             attention_dtype=self._resolve_attention_dtype(self.config.p2p_attention_dtype),
             step_stride=max(1, self.config.p2p_attention_step_stride),
             layer_keywords=self.config.p2p_layer_keywords or None,
+            max_attention_size=self.config.p2p_max_attention_size,
         )
         if blend_word:
             mask = self._compute_replace_mask(prompt_tar, blend_word)
