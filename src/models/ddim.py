@@ -39,6 +39,7 @@ DEFAULT_MODEL_ID = "runwayml/stable-diffusion-v1-5"
 
 @dataclass
 class DDIMConfig:
+    num_inversion_steps: int = 100
     num_inference_steps: int = 50
     guidance_scale: float = 7.5
     inversion_guidance_scale: float = 1.0
@@ -119,7 +120,7 @@ class DDIMInversion:
     @torch.no_grad()
     def invert(self, image: Image.Image, source_prompt: str) -> Dict[str, Any]:
         scheduler = self.setup.scheduler
-        scheduler.set_timesteps(self.config.num_inference_steps)
+        scheduler.set_timesteps(self.config.num_inversion_steps)
         
         # DON'T flip! Work backwards through the list
         timesteps = scheduler.timesteps  # [981, 961, ..., 21, 1]
@@ -162,6 +163,7 @@ class DDIMInversion:
             "latents": latents,
             "text_embeddings": text_embeddings,
             "uncond_embeddings": uncond_embeddings,
+            "num_inversion_steps": self.config.num_inversion_steps,
         }
 
     @torch.no_grad()
@@ -214,6 +216,7 @@ class DDIMEditor:
         device: str = "auto",
         model_id: str = DEFAULT_MODEL_ID,
         num_inference_steps: Optional[int] = None,
+        num_inversion_steps: Optional[int] = None,
         guidance_scale: Optional[float] = None,
         seed: Optional[int] = None,
         precision: Optional[str] = None,
@@ -225,6 +228,10 @@ class DDIMEditor:
         self.config = DDIMConfig()
         if num_inference_steps is not None:
             self.config.num_inference_steps = num_inference_steps
+        if num_inversion_steps is not None:
+            self.config.num_inversion_steps = num_inversion_steps
+        elif num_inference_steps is not None:
+            self.config.num_inversion_steps = num_inference_steps
         if guidance_scale is not None:
             self.config.guidance_scale = guidance_scale
         if seed is not None:
