@@ -52,6 +52,9 @@ The PIE-Bench dataset is already downloaded in `data/PIE-Bench_v1/`:
 ```
 python scripts/test_ddim_single.py --device cuda --num_steps 30 --num_inversion_steps 50
 ```
+```
+ python scripts/test_null_text_inversion.py  --device cuda --num_steps 30  --num_inversion_steps 30 --null_inner_steps 10  --null_lr 0.01
+```
 
 ### Run Sample Images from PIE-Bench
 ```
