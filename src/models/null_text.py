@@ -325,7 +325,7 @@ class NullTextEditor:
                 return torch.float16
         if device.type == "cpu":
             return torch.float32
-        return torch.float16
+        return torch.float32
 
     def edit_image(
         self,
@@ -377,6 +377,8 @@ class NullTextEditor:
         edited_pil = tensor_to_pil(edited_tensor)
 
         if output_path:
+            import os
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
             edited_pil.save(output_path)
 
         if verbose:
