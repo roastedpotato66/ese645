@@ -7,6 +7,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from contextlib import contextmanager
 
 import torch
 from PIL import Image

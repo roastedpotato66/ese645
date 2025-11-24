@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, Union
+from contextlib import contextmanager
 
 import torch
 import torch.nn.functional as F
@@ -62,7 +63,7 @@ class NullTextInversion:
         # We use the base DDIMInversion to capture the initial forward trajectory
         self.base_inversion = DDIMInversion(setup, config)
 
-    @torch.no_grad()
+    
     def invert(self, image: Any, source_prompt: str) -> Dict[str, Any]:
         """
         Phase 1 & 2 of Null-Text Inversion:
