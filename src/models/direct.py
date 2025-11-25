@@ -52,6 +52,7 @@ class DirectEditor:
         device: str = "auto",
         model_id: str = DEFAULT_MODEL_ID,
         num_inference_steps: int | None = None,
+        num_inversion_steps: int | None = None,
         guidance_scale: float | None = None,
         seed: int | None = None,
         precision: str | None = None,
