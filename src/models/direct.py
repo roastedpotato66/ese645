@@ -66,8 +66,14 @@ class DirectEditor:
         dtype = self._resolve_dtype(resolved_device, precision)
 
         self.config = DDIMConfig()
-        if num_inference_steps is not None:
-            self.config.num_inference_steps = num_inference_steps
+        # NEW: handle num_inversion_steps so the script can pass it
+        if num_inversion_steps is not None:
+            self.config.num_inversion_steps = num_inversion_steps
+        elif num_inference_steps is not None:
+            self.config.num_inversion_steps = num_inference_steps
+        else:
+            self.config.num_inversion_steps = 1
+        
         if guidance_scale is not None:
             self.config.guidance_scale = guidance_scale
         if seed is not None:
