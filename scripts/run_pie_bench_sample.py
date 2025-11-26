@@ -38,6 +38,16 @@ def _build_editor(device: str, args: argparse.Namespace):
         model_kwargs["guidance_scale"] = args.guidance_scale
     if args.precision:
         model_kwargs["precision"] = args.precision
+    
+    # Parse config_overrides if provided
+    config_overrides = None
+    if args.config_overrides:
+        try:
+            config_overrides = json.loads(args.config_overrides)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid JSON in --config_overrides: {e}")
+    if config_overrides:
+        model_kwargs["config_overrides"] = config_overrides
 
     return ModelClass(**model_kwargs)
 
@@ -55,6 +65,7 @@ def main():
     parser.add_argument('--guidance_scale', type=float, default=None, help='Optional override for guidance scale')
     parser.add_argument('--precision', type=str, choices=['fp32', 'fp16'], default=None, help='Optional precision override')
     parser.add_argument('--verbose', action='store_true', help='Print detailed logs for each image')
+    parser.add_argument('--config_overrides', type=str, default=None, help='JSON string for model-specific config overrides (e.g., \'{"null_inner_steps": 20, "null_lr": 0.01}\')')
     args = parser.parse_args()
     
     # Detect device (skip MPS by default due to memory issues)
@@ -86,7 +97,7 @@ def main():
     
     # Process images
     total = len(samples)
-    progress = tqdm(samples, desc="Editing", unit="img")
+    progress = tqdm(samples, desc="Editing", unit="img", position=0, leave=True)
     start_time = time.perf_counter()
     processed = 0
     for idx, (img_id, item) in enumerate(progress, start=1):

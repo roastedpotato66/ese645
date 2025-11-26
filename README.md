@@ -8,6 +8,11 @@
 * By Nov 15th, ready for baseline methods and begin to discuss how to improve models.
 * Presentation time is Dec 2nd 9:45AM.
 
+### Nov 25th
+* Anbang finished ddim; Shizhuo finished null_text_inversion.
+* Nora will fix the bug in direct inversion.
+* Everyone should propose an extension method and discuss the feasibility on Nov 26th 11AM.
+
 ## Repository Structure
 
 ```
@@ -55,16 +60,19 @@ python scripts/test_ddim_single.py --device cuda --num_steps 30 --num_inversion_
 ```
  python scripts/test_null_text_inversion.py  --device cuda --num_steps 30  --num_inversion_steps 30 --null_inner_steps 10  --null_lr 0.01
 ```
+```
+python scripts/test_direct_inversion.py --device cuda --num_steps 30
+```
 
 ### Run Sample Images from PIE-Bench
 ```
-python scripts/run_pie_bench_sample.py --device cuda --num_steps 50 --num_inversion_steps 50 --num_images 5 --category 0 --model ddim
+python scripts/run_pie_bench_sample.py --model ddim --device cuda --num_steps 50 --num_inversion_steps 50 --num_images 5 --category 0
 ```
 
 ### Run All Images from PIE-Bench
 
 ```
-python scripts/run_pie_bench_full.py --device cuda --num_steps 50 --num_inversion_steps 50 --categories 0 1 2 3 4 5 6 7 8 9
+python scripts/run_pie_bench_full.py --model ddim --device cuda --num_steps 50 --num_inversion_steps 50 --categories 0 1 2 3 4 5 6 7 8 9
 ```
 
 ### Evaluate Generated Results and Save Metrics

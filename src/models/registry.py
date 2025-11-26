@@ -12,6 +12,7 @@ MODEL_REGISTRY: Dict[str, Type] = {}
 _DEFAULT_MODEL_MODULES = [
     "src.models.ddim",
     "src.models.null_text",
+    "src.models.direct_inversion"
     # Additional models can be listed here as they are added
 ]
 
