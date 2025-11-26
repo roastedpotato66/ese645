@@ -114,8 +114,8 @@ class NullTextInversion:
         # Corresponds to latents indices: T, T-1, ..., 1.
         # Target for step starting at z_t is z_{t-1}.
         
-        # Make a progress bar
-        pbar = tqdm(scheduler.timesteps, desc="Null-Text Optimization")
+        # Make a progress bar that refreshes in place (position=1 for nested bar, leave=False so it doesn't interfere with global progress bar)
+        pbar = tqdm(scheduler.timesteps, desc="Null-Text Optimization", leave=False, position=1, mininterval=0.1)
         
         # Current latent starts at zT
         # latents list is [z0, ..., zT], so zT is at index -1
