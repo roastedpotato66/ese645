@@ -22,23 +22,51 @@ from src.utils.ddim_utils import (
 )
 
 class _DirectInversion(DDIMInversion):
-    """Overrides only the invert() function: one-shot VAE encode."""
+    """Direct inversion: build noisy trajectory analytically from z0."""
+
     @torch.no_grad()
     def invert(self, image: Image.Image, source_prompt: str) -> Dict[str, Any]:
+        scheduler = self.setup.scheduler
+
+        # Make sure we have a reasonable number of inversion steps
+        if self.config.num_inversion_steps is None or self.config.num_inversion_steps <= 0:
+            # default: same as editing steps
+            self.config.num_inversion_steps = self.config.num_inference_steps
+
+        scheduler.set_timesteps(self.config.num_inversion_steps)
+        timesteps = scheduler.timesteps  # e.g. [981, 961, ..., 1]
+
+        # 1) Clean latent z0 from the VAE
         z0 = encode_image(self.setup.vae, image, self.setup.device, self.setup.dtype)
+
+        # 2) Text embeddings (same as DDIM)
         text_emb = encode_prompt(
-            self.setup.text_encoder, self.setup.tokenizer,
-            source_prompt, self.setup.device
+            self.setup.text_encoder,
+            self.setup.tokenizer,
+            source_prompt,
+            self.setup.device,
         )
         uncond = get_null_embedding(
-            self.setup.text_encoder, self.setup.tokenizer, self.setup.device
+            self.setup.text_encoder,
+            self.setup.tokenizer,
+            self.setup.device,
         )
-        # we store a one-element list so downstream code still sees “latents[0]”
+
+        # 3) Sample one noise epsilon and analytically add noise at each timestep
+        noise = torch.randn_like(z0)
+        latents = [z0]  # keep z0 at index 0
+
+        for t in timesteps:
+            # q(x_t | x_0): scheduler knows how to construct x_t from x_0 and noise
+            zt = scheduler.add_noise(z0, noise, t)
+            latents.append(zt)
+
+        # Now latents[-1] is a proper z_T that edit() can start from.
         return {
-            "latents": [z0],
+            "latents": latents,
             "text_embeddings": text_emb,
             "uncond_embeddings": uncond,
-            "num_inversion_steps": 1,
+            "num_inversion_steps": self.config.num_inversion_steps,
         }
 
 @register_model("direct")
