@@ -97,7 +97,7 @@ def main():
     
     # Process images
     total = len(samples)
-    progress = tqdm(samples, desc="Editing", unit="img")
+    progress = tqdm(samples, desc="Editing", unit="img", position=0, leave=True)
     start_time = time.perf_counter()
     processed = 0
     for idx, (img_id, item) in enumerate(progress, start=1):

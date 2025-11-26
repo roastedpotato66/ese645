@@ -102,7 +102,7 @@ def main():
     success = 0
     errors = 0
     total = len(samples)
-    progress = tqdm(samples, desc="Editing", unit="img")
+    progress = tqdm(samples, desc="Editing", unit="img", position=0, leave=True)
     start_time = time.perf_counter()
     for idx, (img_id, item) in enumerate(progress, start=1):
         progress.set_description(f"[{idx}/{total}] {img_id}")

@@ -10,6 +10,7 @@ This module exposes `NullTextEditor`, which extends the standard DDIM editing pi
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, Union
 from contextlib import contextmanager
@@ -115,13 +116,29 @@ class NullTextInversion:
         # Target for step starting at z_t is z_{t-1}.
         
         # Make a progress bar that refreshes in place (position=1 for nested bar, leave=False so it doesn't interfere with global progress bar)
-        pbar = tqdm(scheduler.timesteps, desc="Null-Text Optimization", leave=False, position=1, mininterval=0.1)
+        # Use file=sys.stderr explicitly to ensure proper coordination with outer progress bar
+        # The key is position=1 (outer bar should be position=0) and leave=False
+        # Use total=len() and manual update for better control
+        timesteps_list = list(scheduler.timesteps)
+        pbar = tqdm(
+            total=len(timesteps_list),
+            desc="Null-Text Optimization", 
+            leave=False, 
+            position=1, 
+            file=sys.stderr,
+            mininterval=0.1,
+            maxinterval=1.0,
+            disable=False,
+            smoothing=0.1,
+            dynamic_ncols=False,
+            ncols=100
+        )
         
         # Current latent starts at zT
         # latents list is [z0, ..., zT], so zT is at index -1
         current_latent_idx = len(latents) - 1
         
-        for timestep in pbar:
+        for timestep in timesteps_list:
             # The latent we start from at this step
             zt = latents[current_latent_idx]
             # The latent we want to arrive at (z_{t-1})
@@ -185,6 +202,10 @@ class NullTextInversion:
             # Move to next step in trajectory
             current_latent_idx -= 1
             
+            # Update progress bar manually
+            pbar.update(1)
+        
+        pbar.close()
         return optimized_embeddings
 
     @torch.no_grad()
