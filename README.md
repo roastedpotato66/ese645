@@ -8,6 +8,11 @@
 * By Nov 15th, ready for baseline methods and begin to discuss how to improve models.
 * Presentation time is Dec 2nd 9:45AM.
 
+### Nov 25th
+* Anbang finished ddim; Shizhuo finished null_text_inversion.
+* Nora will fix the bug in direct inversion.
+* Everyone should propose an extension method and discuss the feasibility on Nov 26th 11AM.
+
 ## Repository Structure
 
 ```
