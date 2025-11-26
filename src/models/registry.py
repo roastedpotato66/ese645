@@ -11,6 +11,7 @@ from typing import Callable, Dict, List, Type
 MODEL_REGISTRY: Dict[str, Type] = {}
 _DEFAULT_MODEL_MODULES = [
     "src.models.ddim",
+    "src.models.null_text",
     # Additional models can be listed here as they are added
 ]
 
