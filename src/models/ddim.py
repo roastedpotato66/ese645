@@ -65,6 +65,15 @@ class DDIMConfig:
     p2p_layer_keywords: List[str] = field(default_factory=list)
     p2p_max_attention_size: int = 32 * 32
 
+    # MasaCtrl
+    use_masactrl: bool = False
+    masactrl_step_start: int = 0
+    masactrl_layer_keywords: List[str] = field(default_factory=list)
+
+    # Latent Blending
+    use_latent_blending: bool = False
+    latent_blend_steps: int = 0
+
     def update(self, overrides: Optional[Dict[str, Any]] = None):
         if not overrides:
             return
@@ -200,9 +209,26 @@ class DDIMInversion:
         )
         uncond_embeddings = inversion_result["uncond_embeddings"]
 
+        # Latent Blending Setup
+        source_latents = inversion_result["latents"]
+
         for idx, timestep in enumerate(scheduler.timesteps):
             if attention_controller is not None:
                 attention_controller.set_step(idx)
+            
+            # Latent Blending: If active for this step, force latent from inversion
+            # We want the latent AFTER this step (i.e., the one corresponding to the next timestep)
+            # source_latents array: [z0, ..., z_{T-1}, zT]
+            # zT is at index -1. z_{T-1} is at index -2.
+            # At idx=0 (processing T -> T-1), we want result to be z_{T-1} (index -2).
+            # General: result index = -(idx + 2)
+            
+            if self.config.use_latent_blending and idx < self.config.latent_blend_steps:
+                target_idx = -(idx + 2)
+                if abs(target_idx) <= len(source_latents):
+                    zt = source_latents[target_idx]
+                    continue # Skip computation for this step
+
             noise_pred = predict_noise(
                 self.setup.unet,
                 zt,
@@ -400,6 +426,9 @@ class DDIMEditor:
             step_stride=max(1, self.config.p2p_attention_step_stride),
             layer_keywords=self.config.p2p_layer_keywords or None,
             max_attention_size=self.config.p2p_max_attention_size,
+            use_masactrl=self.config.use_masactrl,
+            masactrl_step_start=self.config.masactrl_step_start,
+            masactrl_layer_keywords=self.config.masactrl_layer_keywords,
         )
         if blend_word:
             mask = self._compute_replace_mask(prompt_tar, blend_word)

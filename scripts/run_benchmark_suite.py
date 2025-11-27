@@ -107,49 +107,25 @@ def main():
     
     models = ['ddim', 'direct_inversion']
     
-    # Define 8 configurations per model
+    # Define 3 configurations per model (6 total runs)
     configurations = [
-        # 1-4: Default model
         {
             'id': 1,
-            'label': 'baseline',
-            'args': []
+            'label': 'Latent Blending',
+            'args': ['--use_latent_blending', '--latent_blend_steps', '15']
         },
         {
             'id': 2,
-            'label': 'baseline + FreeU',
-            'args': ['--use_freeu']
+            'label': 'MasaCtrl',
+            'args': ['--use_masactrl', '--masactrl_step_start', '40', '--masactrl_layer_keywords', 'up_blocks.1', 'up_blocks.2']
         },
         {
             'id': 3,
-            'label': 'baseline + RescaleCFG=0.7',
-            'args': ['--rescale_factor', '0.7']
-        },
-        {
-            'id': 4,
-            'label': 'baseline + FreeU + RescaleCFG=0.7',
-            'args': ['--use_freeu', '--rescale_factor', '0.7']
-        },
-        # 5-8: Realistic Vision model
-        {
-            'id': 5,
-            'label': 'Realistic_Vision_V5.1',
-            'args': ['--model_id', 'SG161222/Realistic_Vision_V5.1_noVAE']
-        },
-        {
-            'id': 6,
-            'label': 'Realistic_Vision_V5.1 + FreeU',
-            'args': ['--model_id', 'SG161222/Realistic_Vision_V5.1_noVAE', '--use_freeu']
-        },
-        {
-            'id': 7,
-            'label': 'Realistic_Vision_V5.1 + RescaleCFG=0.7',
-            'args': ['--model_id', 'SG161222/Realistic_Vision_V5.1_noVAE', '--rescale_factor', '0.7']
-        },
-        {
-            'id': 8,
-            'label': 'Realistic_Vision_V5.1 + FreeU + RescaleCFG=0.7',
-            'args': ['--model_id', 'SG161222/Realistic_Vision_V5.1_noVAE', '--use_freeu', '--rescale_factor', '0.7']
+            'label': 'Latent Blending + MasaCtrl',
+            'args': [
+                '--use_latent_blending', '--latent_blend_steps', '15',
+                '--use_masactrl', '--masactrl_step_start', '40', '--masactrl_layer_keywords', 'up_blocks.1', 'up_blocks.2'
+            ]
         },
     ]
     
@@ -168,7 +144,7 @@ def main():
             full_label = f"[{model}] {config_label}"
             
             print(f"\n\n{'#'*80}")
-            print(f"# Run {config_id}/8 for {model}: {config_label}")
+            print(f"# Run {config_id}/3 for {model}: {config_label}")
             print(f"{'#'*80}\n")
             
             # Build command for run_pie_bench_sample.py

@@ -64,6 +64,9 @@ class PromptToPromptAttnProcessor:
         key = attn.head_to_batch_dim(key)
         value = attn.head_to_batch_dim(value)
 
+        # MasaCtrl Hook: Allow modifying K/V (e.g. replacing with source)
+        key, value = self.controller.modify_kv(key, value, attn.is_cross_attention, self.place_in_unet)
+
         attention_probs = attn.get_attention_scores(query, key, attention_mask)
         attention_probs = self.controller.modify(attention_probs, attn.is_cross_attention, self.place_in_unet)
 
@@ -97,6 +100,10 @@ class PromptToPromptController:
         step_stride: int = 1,
         layer_keywords: Optional[List[str]] = None,
         max_attention_size: int = 32 * 32,
+        # MasaCtrl args
+        use_masactrl: bool = False,
+        masactrl_step_start: int = 0,
+        masactrl_layer_keywords: Optional[List[str]] = None,
     ):
         self.self_replace_steps = self_replace_steps
         self.cross_replace_steps = cross_replace_steps
@@ -105,6 +112,13 @@ class PromptToPromptController:
         self.step_stride = max(1, step_stride)
         self.layer_keywords = layer_keywords
         self.max_attention_size = max_attention_size
+        
+        # MasaCtrl
+        self.use_masactrl = use_masactrl
+        self.masactrl_step_start = masactrl_step_start
+        self.masactrl_layer_keywords = masactrl_layer_keywords
+        self.kv_store: Dict[str, Dict[int, Tuple[torch.Tensor, torch.Tensor]]] = {}
+
         self.mode: str = "record"
         self.total_steps: int = 0
         self.current_step: int = 0
@@ -133,6 +147,7 @@ class PromptToPromptController:
         self.mode = mode
         if mode == "record":
             self.attention_store = {}
+            self.kv_store = {}
             self.stats["record_calls"] = 0
             self.stats["apply_calls"] = 0
             self.stats["cross_replacements"] = 0
@@ -147,6 +162,122 @@ class PromptToPromptController:
         mask: shape (1, 1, seq_len) where 1 means replace, 0 means keep target attention.
         """
         self.replace_token_mask = mask.clone()
+
+    def modify_kv(
+        self, 
+        key: torch.Tensor, 
+        value: torch.Tensor, 
+        is_cross_attention: bool, 
+        place_in_unet: str
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        MasaCtrl implementation: Store (record) or Replace (apply) K and V matrices.
+        """
+        if not self.use_masactrl:
+            return key, value
+        
+        # MasaCtrl typically targets Self-Attention
+        if is_cross_attention:
+            return key, value
+
+        if not self._masactrl_layer_allowed(place_in_unet):
+            return key, value
+
+        if self.mode == "record":
+            self._save_kv(key, value, place_in_unet)
+            return key, value
+        
+        # Apply mode
+        if self.current_step < self.masactrl_step_start:
+            return key, value
+            
+        return self._replace_kv(key, value, place_in_unet)
+
+    def _save_kv(self, key: torch.Tensor, value: torch.Tensor, place_in_unet: str):
+        # Check size limit to prevent OOM (using same heuristic as attention store)
+        seq_len = key.shape[2] # [Batch*Heads, Seq, Dim] after head_to_batch? 
+        # Actually head_to_batch makes it [Batch*Heads, Seq, Dim]
+        # Original shape [Batch, Heads, Seq, Dim]
+        
+        if seq_len > self.max_attention_size:
+            return
+
+        # Store only at relevant steps? If step_stride is used for attn, use it here too?
+        # Usually MasaCtrl requires consistent replacement, so stride might break it.
+        # But let's respect stride to save memory if configured, or assume stride=1 for MasaCtrl.
+        
+        # Store
+        if place_in_unet not in self.kv_store:
+            self.kv_store[place_in_unet] = {}
+            
+        # We store on CPU to save VRAM
+        k_cpu = key.detach().cpu().to(self.attention_dtype)
+        v_cpu = value.detach().cpu().to(self.attention_dtype)
+        
+        # Handle unconditional batching:
+        # If batch size is 2*N (uncond+cond), we typically want the UNCOND or COND?
+        # MasaCtrl paper usually uses the source image layout.
+        # If source was generated with guidance, it has uncond+cond.
+        # We usually take the COND part (second half) or UNCOND?
+        # Actually, for structure preservation of the source image, we want the specific latents.
+        # Standard P2P usually records the Uncond+Cond pass.
+        # Let's store the whole thing for now.
+        
+        self.kv_store[place_in_unet][self.current_step] = (k_cpu, v_cpu)
+
+    def _replace_kv(self, key: torch.Tensor, value: torch.Tensor, place_in_unet: str) -> Tuple[torch.Tensor, torch.Tensor]:
+        if place_in_unet not in self.kv_store:
+            return key, value
+        
+        saved = self.kv_store[place_in_unet].get(self.current_step)
+        if saved is None:
+            return key, value
+            
+        k_src, v_src = saved
+        k_src = k_src.to(key.device, dtype=key.dtype)
+        v_src = v_src.to(value.device, dtype=value.dtype)
+        
+        # Dimensions: [Batch*Heads, Seq, Dim]
+        # We want to replace.
+        
+        # If shapes mismatch (e.g. different batch size due to CFG settings), handle carefully.
+        # Usually Inversion (Scale=1) has Batch=1 (or 2 if we use calc).
+        # Inference (Scale=7.5) has Batch=2.
+        
+        # If Source was recorded with Scale=1 (Batch=1 or 2?)
+        # In our DDIMInversion code, inversion uses `inversion_guidance_scale=1.0`.
+        # But `predict_noise` implementation:
+        # if scale==1.0 or uncond is None -> Batch=1 (only text).
+        # So k_src has batch size corresponding to 1 input.
+        
+        # Target (Edit) uses Scale=7.5 -> Batch=2 (Uncond + Cond).
+        
+        # We want to replace K/V for BOTH Uncond and Cond passes in Target?
+        # Or just Cond?
+        # MasaCtrl usually replaces both to force layout in both components of CFG.
+        
+        if k_src.shape[0] != key.shape[0]:
+            # Case: Source Batch=1 (Cond), Target Batch=2 (Uncond+Cond)
+            # We need to duplicate src to match target
+            if k_src.shape[0] * 2 == key.shape[0]:
+                k_src = torch.cat([k_src, k_src], dim=0)
+                v_src = torch.cat([v_src, v_src], dim=0)
+            else:
+                # Shape mismatch not easily resolvable
+                return key, value
+        
+        return k_src, v_src
+
+    def _masactrl_layer_allowed(self, place_in_unet: str) -> bool:
+        if not self.masactrl_layer_keywords:
+            # If none specified, MasaCtrl usually applies to specific decoder layers by default?
+            # Or all? All is too much memory/constraint.
+            # Default to "up" (decoder) layers if list is empty?
+            # Or user must specify.
+            # Let's allow "up" and "down" keywords.
+            return False
+        lowered = place_in_unet.lower()
+        return any(keyword.lower() in lowered for keyword in self.masactrl_layer_keywords)
 
     def modify(self, attention_probs: torch.Tensor, is_cross_attention: bool, place_in_unet: str) -> torch.Tensor:
         if not self._layer_allowed(place_in_unet):

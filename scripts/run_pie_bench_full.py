@@ -58,6 +58,16 @@ def _build_editor(device: str, args: argparse.Namespace):
     if args.rescale_factor > 0:
         config_overrides["rescale_factor"] = args.rescale_factor
 
+    if args.use_masactrl:
+        config_overrides["use_masactrl"] = True
+        config_overrides["masactrl_step_start"] = args.masactrl_step_start
+        if args.masactrl_layer_keywords:
+            config_overrides["masactrl_layer_keywords"] = args.masactrl_layer_keywords
+
+    if args.use_latent_blending or args.latent_blend_steps > 0:
+        config_overrides["use_latent_blending"] = True
+        config_overrides["latent_blend_steps"] = args.latent_blend_steps
+
     if config_overrides:
         model_kwargs["config_overrides"] = config_overrides
 
@@ -86,6 +96,15 @@ def main():
     
     # Rescale CFG
     parser.add_argument('--rescale_factor', type=float, default=0.0, help='Rescale CFG factor (0.0 = disabled, typically 0.7)')
+
+    # MasaCtrl
+    parser.add_argument('--use_masactrl', action='store_true', help='Enable MasaCtrl')
+    parser.add_argument('--masactrl_step_start', type=int, default=0, help='Step to start MasaCtrl')
+    parser.add_argument('--masactrl_layer_keywords', nargs='+', type=str, default=[], help='Layer keywords for MasaCtrl')
+
+    # Latent Blending
+    parser.add_argument('--use_latent_blending', action='store_true', help='Enable Latent Blending')
+    parser.add_argument('--latent_blend_steps', type=int, default=15, help='Number of steps for Latent Blending')
     
     parser.add_argument('--verbose', action='store_true', help='Print detailed logs for each image')
     parser.add_argument('--config_overrides', type=str, default=None, help='JSON string for model-specific config overrides (e.g., \'{"null_inner_steps": 20, "null_lr": 0.01}\')')
