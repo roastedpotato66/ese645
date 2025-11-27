@@ -21,32 +21,33 @@ ADAPTIVE_SCHEDULES = {
     # 0: Random - Default
     "0": (0.6, 0.4), 
     
-    # 1: Change Object - Needs balance (keep background, change object)
-    "1": (0.5, 0.4), 
+# 1: Change Object - Needs to change shape AND content (Dog -> Cat)
+    "1": (0.4, 0.2), 
     
-    # 2: Add Object - Hard task, relax structure slightly to fit new object
-    "2": (0.4, 0.4),
+    # 2: Add Object - Relax structure to make room for new object
+    "2": (0.4, 0.3),
     
     # 3: Delete Object - Needs freedom to hallucinate background fill
-    "3": (0.3, 0.3),
+    "3": (0.3, 0.2),
     
     # 4: Change Content - Balanced
-    "4": (0.5, 0.4),
+    "4": (0.4, 0.3),
     
-    # 5: Change Pose - Needs to break structure significantly
-    "5": (0.3, 0.4),
+    # 5: Change Pose - Must break structure significantly
+    "5": (0.1, 0.1),
     
-    # 6: Change Color - STRICT structure preservation needed
-    "6": (0.8, 0.8),
+    # 6: Change Color - STRICT structure (keep car shape), but allow content change (red -> blue)
+    # CRITICAL FIX: Low cross_replace allows color to change!
+    "6": (0.9, 0.2),
     
-    # 7: Change Material - High structure preservation
-    "7": (0.7, 0.6),
+    # 7: Change Material - High structure, new texture content
+    "7": (0.8, 0.3),
     
     # 8: Change Background - Keep foreground structure (High Self), change context
-    "8": (0.8, 0.4),
+    "8": (0.8, 0.3),
     
-    # 9: Change Style - Allow major structural changes
-    "9": (0.3, 0.5), 
+    # 9: Change Style - Allow major structural changes (Photo -> Oil Painting)
+    "9": (0.2, 0.2),
 }
 
 # Add parent directory to path (since we're in scripts/)
