@@ -39,13 +39,25 @@ def _build_editor(device: str, args: argparse.Namespace):
     if args.precision:
         model_kwargs["precision"] = args.precision
     
-    # Parse config_overrides if provided
-    config_overrides = None
+    # Handle config overrides including FreeU and Rescale
+    config_overrides = {}
     if args.config_overrides:
         try:
             config_overrides = json.loads(args.config_overrides)
         except json.JSONDecodeError as e:
             raise ValueError(f"Invalid JSON in --config_overrides: {e}")
+    
+    # CLI arguments take precedence or merge into overrides
+    if args.use_freeu:
+        config_overrides["use_freeu"] = True
+        config_overrides["freeu_b1"] = args.freeu_b1
+        config_overrides["freeu_b2"] = args.freeu_b2
+        config_overrides["freeu_s1"] = args.freeu_s1
+        config_overrides["freeu_s2"] = args.freeu_s2
+    
+    if args.rescale_factor > 0:
+        config_overrides["rescale_factor"] = args.rescale_factor
+
     if config_overrides:
         model_kwargs["config_overrides"] = config_overrides
 
@@ -64,6 +76,17 @@ def main():
     parser.add_argument('--num_inversion_steps', type=int, default=None, help='Optional override for inversion steps (defaults to editing steps when unset)')
     parser.add_argument('--guidance_scale', type=float, default=None, help='Optional override for guidance scale')
     parser.add_argument('--precision', type=str, choices=['fp32', 'fp16'], default=None, help='Optional precision override')
+    
+    # FreeU args
+    parser.add_argument('--use_freeu', action='store_true', help='Enable FreeU')
+    parser.add_argument('--freeu_b1', type=float, default=1.2, help='FreeU b1')
+    parser.add_argument('--freeu_b2', type=float, default=1.4, help='FreeU b2')
+    parser.add_argument('--freeu_s1', type=float, default=0.9, help='FreeU s1')
+    parser.add_argument('--freeu_s2', type=float, default=0.2, help='FreeU s2')
+    
+    # Rescale CFG
+    parser.add_argument('--rescale_factor', type=float, default=0.0, help='Rescale CFG factor (0.0 = disabled, typically 0.7)')
+    
     parser.add_argument('--verbose', action='store_true', help='Print detailed logs for each image')
     parser.add_argument('--config_overrides', type=str, default=None, help='JSON string for model-specific config overrides (e.g., \'{"null_inner_steps": 20, "null_lr": 0.01}\')')
     args = parser.parse_args()
@@ -133,7 +156,7 @@ def main():
     elapsed = time.perf_counter() - start_time
     
     print(f"\n{'='*60}")
-    print(f"Complete!")
+    print(f"[DONE] Complete!")
     print(f"  Success: {success}")
     print(f"  Errors: {errors}")
     print(f"  Output: outputs/{args.model}/")

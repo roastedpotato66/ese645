@@ -28,6 +28,7 @@ from src.utils.ddim_utils import (
     get_null_embedding,
     load_image,
     predict_noise,
+    register_freeu,
     set_seed,
     tensor_to_pil,
 )
@@ -46,6 +47,15 @@ class DDIMConfig:
     image_size: int = 512
     dtype: torch.dtype = torch.float16
     seed: Optional[int] = 42
+    
+    # FreeU & Rescale CFG
+    use_freeu: bool = False
+    freeu_b1: float = 1.2
+    freeu_b2: float = 1.4
+    freeu_s1: float = 0.9
+    freeu_s2: float = 0.2
+    rescale_factor: float = 0.0
+
     use_prompt_to_prompt: bool = True
     self_replace_steps: float = 0.6
     cross_replace_steps: float = 0.4
@@ -156,6 +166,7 @@ class DDIMInversion:
                 text_embeddings,
                 guidance_scale=self.config.inversion_guidance_scale,
                 uncond_embeddings=uncond_embeddings,
+                rescale_factor=0.0,  # Typically no rescaling during inversion
             )
             zt = ddim_step_reverse(scheduler, noise_pred, t_curr, t_prev, zt)
             latents.append(zt)
@@ -199,6 +210,7 @@ class DDIMInversion:
                 target_embeddings,
                 guidance_scale=self.config.guidance_scale,
                 uncond_embeddings=uncond_embeddings,
+                rescale_factor=self.config.rescale_factor,
             )
             zt = ddim_step_forward(scheduler, noise_pred, timestep, zt)
 
@@ -243,6 +255,17 @@ class DDIMEditor:
         set_seed(self.config.seed)
 
         self.setup = StandardImageEditingSetup(model_id=model_id, device=resolved_device, dtype=dtype)
+        
+        # Apply FreeU if configured
+        if self.config.use_freeu:
+            register_freeu(
+                self.setup.unet, 
+                b1=self.config.freeu_b1, 
+                b2=self.config.freeu_b2, 
+                s1=self.config.freeu_s1, 
+                s2=self.config.freeu_s2
+            )
+
         self.inversion = DDIMInversion(self.setup, self.config)
         self._last_attention_stats: Optional[Dict[str, Any]] = None
 

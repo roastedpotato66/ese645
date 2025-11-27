@@ -78,6 +78,7 @@ class DirectInversionImpl(DDIMInversion):
                 text_embeddings,
                 guidance_scale=self.config.guidance_scale, 
                 uncond_embeddings=uncond_embeddings,
+                rescale_factor=self.config.rescale_factor,
             )
             
             # Force the next latent to be the one from the inversion chain
