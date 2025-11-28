@@ -102,107 +102,89 @@ class NullTextInversion:
     ) -> List[torch.Tensor]:
         """
         Optimizes the unconditional embeddings to match the latent trajectory.
-        latents: [z0, z1, ..., zT] obtained from inversion.
+        Fixes: Warm start & Dynamic trajectory tracking.
         """
         scheduler = self.setup.scheduler
-        # Ensure scheduler timesteps are set for inference (T -> 0)
         scheduler.set_timesteps(self.config.num_inference_steps)
         
-        # We'll store one optimized embedding per timestep
         optimized_embeddings = []
-        
-        # We iterate zT -> z0. 
-        # Corresponds to latents indices: T, T-1, ..., 1.
-        # Target for step starting at z_t is z_{t-1}.
-        
-        # Make a progress bar that refreshes in place (position=1 for nested bar, leave=False so it doesn't interfere with global progress bar)
-        # Use file=sys.stderr explicitly to ensure proper coordination with outer progress bar
-        # The key is position=1 (outer bar should be position=0) and leave=False
-        # Use total=len() and manual update for better control
         timesteps_list = list(scheduler.timesteps)
-        pbar = tqdm(
-            total=len(timesteps_list),
-            desc="Null-Text Optimization", 
-            leave=False, 
-            position=1, 
-            file=sys.stderr,
-            mininterval=0.1,
-            maxinterval=1.0,
-            disable=False,
-            smoothing=0.1,
-            dynamic_ncols=False,
-            ncols=100
-        )
+
+       
+        current_null_embedding = initial_uncond_embeddings.clone().detach()
+        current_null_embedding.requires_grad = True
         
-        # Current latent starts at zT
-        # latents list is [z0, ..., zT], so zT is at index -1
-        current_latent_idx = len(latents) - 1
+       
+        current_latent = latents[-1]
         
-        for timestep in timesteps_list:
-            # The latent we start from at this step
-            zt = latents[current_latent_idx]
-            # The latent we want to arrive at (z_{t-1})
-            target_latent = latents[current_latent_idx - 1]
+      
+        pbar = tqdm(total=len(timesteps_list), desc="Null-Text Optimization", leave=False, position=1, file=sys.stderr)
+        
+        for i, timestep in enumerate(timesteps_list):
             
-            # Initialize optimization parameter for this step
-            # Clone and enable gradients
-            null_embedding = initial_uncond_embeddings.clone().detach()
-            null_embedding.requires_grad = True
+            target_latent = latents[len(latents) - 2 - i]
             
-            optimizer = Adam([null_embedding], lr=self.config.null_lr)
+          
+            current_lr = self.config.null_lr * (1.0 - i / len(timesteps_list))
+            optimizer = Adam([current_null_embedding], lr=current_lr)
             
-            # Optimization loop for this timestep
             for _ in range(self.config.null_inner_steps):
                 optimizer.zero_grad()
                 
-                # Predict noise using the current (optimizing) null embedding
-                # Note: We must allow gradients to flow through predict_noise -> unet
-                # predict_noise helper usually has @torch.no_grad(), so we might need to manually call unet here 
-                # or ensure predict_noise context is handled. 
-                # The src/utils/ddim_utils.py predict_noise generally assumes no_grad context is external 
-                # or is purely inference. Let's manually implement the forward pass to be safe and explicit about gradients.
-                
-                # Expand latents for CFG
-                latent_input = torch.cat([zt] * 2)
+                latent_input = torch.cat([current_latent] * 2)
                 latent_input = scheduler.scale_model_input(latent_input, timestep)
                 
-                # Concat conditional and current unconditional
-                combined_embeddings = torch.cat([null_embedding, text_embeddings])
+             
+                combined_embeddings = torch.cat([current_null_embedding, text_embeddings])
                 
-                # UNet forward
                 noise_pred = self.setup.unet(
                     latent_input, 
                     timestep, 
                     encoder_hidden_states=combined_embeddings
                 ).sample
 
-                # Perform CFG
                 noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                 noise_pred_cfg = noise_pred_uncond + self.config.guidance_scale * (
                     noise_pred_text - noise_pred_uncond
                 )
 
-                # Predict x_prev (z_{t-1})
-                # We reuse ddim_step_forward logic but need it to support gradients.
-                # Standard ddim_step_forward usually works with tensors, so it should be autograd-compatible 
-                # provided scheduler functions are compliant.
                 prev_latent_pred = ddim_step_forward(
-                    scheduler, noise_pred_cfg, timestep, zt
+                    scheduler, noise_pred_cfg, timestep, current_latent
                 )
 
-                # Calculate Loss (MSE between predicted z_{t-1} and actual z_{t-1} from inversion)
                 loss = F.mse_loss(prev_latent_pred, target_latent)
                 
                 loss.backward()
                 optimizer.step()
+          
+            optimized_embeddings.append(current_null_embedding.detach().clone())
             
-            # Store the optimized embedding (detach to save memory/graph)
-            optimized_embeddings.append(null_embedding.detach())
+           
+            with torch.no_grad():
+                
+                latent_input = torch.cat([current_latent] * 2)
+                latent_input = scheduler.scale_model_input(latent_input, timestep)
+                combined_embeddings = torch.cat([current_null_embedding, text_embeddings])
+                
+                noise_pred = self.setup.unet(
+                    latent_input, 
+                    timestep, 
+                    encoder_hidden_states=combined_embeddings
+                ).sample
+                
+                noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+                noise_pred_cfg = noise_pred_uncond + self.config.guidance_scale * (
+                    noise_pred_text - noise_pred_uncond
+                )
+                
+                current_latent = ddim_step_forward(
+                    scheduler, noise_pred_cfg, timestep, current_latent
+                )
             
-            # Move to next step in trajectory
-            current_latent_idx -= 1
+            # 为下一步准备：重新开启梯度
+            current_null_embedding = current_null_embedding.detach()
+            current_null_embedding.requires_grad = True
             
-            # Update progress bar manually
             pbar.update(1)
         
         pbar.close()
