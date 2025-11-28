@@ -62,11 +62,28 @@ def _build_editor(device: str, args: argparse.Namespace):
         config_overrides["use_masactrl"] = True
         config_overrides["masactrl_step_start"] = args.masactrl_step_start
         if args.masactrl_layer_keywords:
-            config_overrides["masactrl_layer_keywords"] = args.masactrl_layer_keywords
+            # Handle case where user passes quoted string "word1 word2" instead of multiple args
+            keywords = []
+            for k in args.masactrl_layer_keywords:
+                keywords.extend(k.split())
+            config_overrides["masactrl_layer_keywords"] = keywords
 
-    if args.use_latent_blending or args.latent_blend_steps > 0:
+    if args.use_latent_blending:
         config_overrides["use_latent_blending"] = True
         config_overrides["latent_blend_steps"] = args.latent_blend_steps
+
+    # DEBUG: Print active configuration to verify parsing
+    print("\n--- Configuration Debug ---")
+    print(f"Model: {args.model}")
+    print(f"Use FreeU: {config_overrides.get('use_freeu', False)}")
+    print(f"Use MasaCtrl: {config_overrides.get('use_masactrl', False)}")
+    if config_overrides.get('use_masactrl'):
+        print(f"  - Start Step: {config_overrides.get('masactrl_step_start')}")
+        print(f"  - Keywords: {config_overrides.get('masactrl_layer_keywords')}")
+    print(f"Use Latent Blending: {config_overrides.get('use_latent_blending', False)}")
+    if config_overrides.get('use_latent_blending'):
+        print(f"  - Steps: {config_overrides.get('latent_blend_steps')}")
+    print("---------------------------\n")
 
     if config_overrides:
         model_kwargs["config_overrides"] = config_overrides
