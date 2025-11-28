@@ -125,6 +125,7 @@ def main():
     
     parser.add_argument('--verbose', action='store_true', help='Print detailed logs for each image')
     parser.add_argument('--config_overrides', type=str, default=None, help='JSON string for model-specific config overrides (e.g., \'{"null_inner_steps": 20, "null_lr": 0.01}\')')
+    parser.add_argument('--output_path', type=str, default=None, help='Base output path (default: outputs/{model}/annotation_images)')
     args = parser.parse_args()
     
     # Detect device (skip MPS by default due to memory issues)
@@ -170,7 +171,10 @@ def main():
         prompt_tar = item['editing_prompt'].replace('[', '').replace(']', '')
         blend_word = item.get('blended_word', None)
         
-        output_path = Path("outputs") / args.model / "annotation_images" / item['image_path']
+        if args.output_path:
+            output_path = Path(args.output_path) / "annotation_images" / item['image_path']
+        else:
+            output_path = Path("outputs") / args.model / "annotation_images" / item['image_path']
         output_path.parent.mkdir(parents=True, exist_ok=True)
         
         try:
@@ -195,7 +199,10 @@ def main():
     print(f"[DONE] Complete!")
     print(f"  Success: {success}")
     print(f"  Errors: {errors}")
-    print(f"  Output: outputs/{args.model}/")
+    if args.output_path:
+        print(f"  Output: {args.output_path}")
+    else:
+        print(f"  Output: outputs/{args.model}/")
     elapsed_td = timedelta(seconds=elapsed)
     print(f"  Time elapsed: {elapsed_td}")
     if success:
