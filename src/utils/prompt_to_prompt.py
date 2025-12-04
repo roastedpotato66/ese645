@@ -262,4 +262,3 @@ class PromptToPromptController:
             "max_attention_size": self.max_attention_size,
         }
 
-
