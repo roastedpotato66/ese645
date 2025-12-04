@@ -10,8 +10,18 @@
 
 ### Nov 25th
 * Anbang finished ddim; Shizhuo finished null_text_inversion.
-* Nora will fix the bug in direct inversion.
+* Nora and Anbang will fix the bug in direct inversion.
 * Everyone should propose an extension method and discuss the feasibility on Nov 26th 11AM.
+
+### Nov 27th
+* Shizhuo finished null_text_inversion on 700 images and wrote benchmark strategies in report.
+* Anbang tested several extension methods and found masactrl and latent blending would work.
+* Shizhuo will run full dataset on DDIM and direct inversion extensions.
+
+### Dec 1st
+* Nora prepared a draft of report and slides.
+* Shizhuo and Anbang edited report and slides and prepared the results.
+* Shizhuo tested masactrl and latent blending extensions on Null Text Inversion, but they did not help.
 
 ## Repository Structure
 
