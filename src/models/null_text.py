@@ -147,6 +147,15 @@ class NullTextInversion:
                 noise_pred_cfg = noise_pred_uncond + self.config.guidance_scale * (
                     noise_pred_text - noise_pred_uncond
                 )
+                
+                # OPTIONAL: Apply Rescale CFG during optimization?
+                # If enabled, we should probably apply it here too so the null embeddings 
+                # are optimized against the actual physics used in generation.
+                if self.config.rescale_factor > 0.0:
+                    std_text = noise_pred_text.std(dim=list(range(1, noise_pred_text.ndim)), keepdim=True)
+                    std_cfg = noise_pred_cfg.std(dim=list(range(1, noise_pred_cfg.ndim)), keepdim=True)
+                    factor = std_text / (std_cfg + 1e-7)
+                    noise_pred_cfg = noise_pred_cfg * factor * self.config.rescale_factor + noise_pred_cfg * (1 - self.config.rescale_factor)
 
                 prev_latent_pred = ddim_step_forward(
                     scheduler, noise_pred_cfg, timestep, current_latent
@@ -242,6 +251,7 @@ class NullTextInversion:
                 target_embeddings,
                 guidance_scale=self.config.guidance_scale,
                 uncond_embeddings=uncond_embeddings,
+                rescale_factor=self.config.rescale_factor,
             )
             
             zt = ddim_step_forward(scheduler, noise_pred, timestep, zt)

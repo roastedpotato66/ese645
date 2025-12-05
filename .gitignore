@@ -216,3 +216,7 @@ logs/
 ddim_overview.md
 debug_outputs/
 ddim_debug.md
+
+# models cache
+list_hf_models.py
+delete_hf_models.py

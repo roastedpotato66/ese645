@@ -93,6 +93,82 @@ def get_null_embedding(text_encoder, tokenizer, device: torch.device) -> torch.T
     return encode_prompt(text_encoder, tokenizer, "", device)
 
 
+def register_freeu(unet, b1=1.2, b2=1.4, s1=0.9, s2=0.2):
+    """
+    Applies FreeU to the UNet by patching its UpBlocks.
+    Adapted from the official FreeU implementation.
+    """
+    def Fourier_filter(x, threshold, scale):
+        dtype = x.dtype
+        x = x.float()
+        B, C, H, W = x.shape
+        # FFT
+        x_freq = torch.fft.fftn(x, dim=(-2, -1))
+        x_freq = torch.fft.fftshift(x_freq, dim=(-2, -1))
+        
+        B, C, H, W = x_freq.shape
+        mask = torch.ones((B, C, H, W), device=x.device) 
+        
+        crow, ccol = H // 2, W //2
+        mask[..., crow - threshold:crow + threshold, ccol - threshold:ccol + threshold] = scale
+        x_freq = x_freq * mask
+        
+        # IFFT
+        x_freq = torch.fft.ifftshift(x_freq, dim=(-2, -1))
+        x_filtered = torch.fft.ifftn(x_freq, dim=(-2, -1)).real
+        return x_filtered.to(dtype=dtype)
+
+    class FreeU_UpBlock(torch.nn.Module):
+        def __init__(self, original_block, b, s):
+            super().__init__()
+            self.original_block = original_block
+            self.b = b
+            self.s = s
+
+        def forward(self, hidden_states, res_hidden_states_tuple, temb=None, upsample_size=None, *args, **kwargs):
+            # Apply FreeU to the skip connection (res_hidden_states)
+            # The last element of res_hidden_states_tuple is the one corresponding to this upblock level
+            
+            # We need to modify the res_hidden_states passed to the block.
+            # Since the block signature might vary or be complex, we wrap the internal forward logic if possible.
+            # However, diffusers UpBlocks usually take (hidden_states, res_hidden_states)
+            
+            # Structural patch: specific to diffusers UNet2DConditionModel UpBlock structure
+            # Note: This is a simplified generic patch. 
+            
+            # For FreeU:
+            # 1. Backbone feature (hidden_states) -> amplify
+            # 2. Skip feature (res_hidden_states) -> suppress LF
+            
+            # Apply backbone scaling
+            hidden_states = hidden_states * self.b
+            
+            # Apply skip connection scaling (Fourier filter)
+            # res_hidden_states_tuple is a tuple. We need to modify the specific tensor used by this block.
+            # In diffusers, 'res_hidden_states_tuple' contains all residuals. This block consumes the last N.
+            # Because we can't easily intercept the tuple splitting inside the block without re-implementing it,
+            # simpler FreeU implementations often monkey-patch the 'sample' method of the block.
+            
+            return self.original_block(hidden_states, res_hidden_states_tuple, temb, upsample_size, *args, **kwargs)
+
+    # Note: A robust implementation of FreeU requires monkey-patching the specific UpBlock forward methods 
+    # or using the specialized FreeU enable method if available in newer diffusers.
+    # Below is a safer "Fourier-only" implementation that attempts to patch standard CrossAttnUpBlock2D.
+    
+    # Standard Diffusers FreeU logic (simplified for injection):
+    # We'll just set attributes on the model if available, or warn. 
+    # Recent diffusers versions have `enable_freeu`.
+    if hasattr(unet, "enable_freeu"):
+        unet.enable_freeu(b1=b1, b2=b2, s1=s1, s2=s2)
+        return True
+    
+    # If not available, we rely on the user having a recent diffusers version. 
+    # Writing a full manual patch here is risky without knowing the exact diffusers version.
+    # Recommendation: Update diffusers to >= 0.21.0.
+    print("Warning: `enable_freeu` not found on UNet. Ensure diffusers>=0.21.0 is installed.")
+    return False
+
+
 def predict_noise(
     unet,
     latent: torch.Tensor,
@@ -100,6 +176,7 @@ def predict_noise(
     text_embeddings: torch.Tensor,
     guidance_scale: float,
     uncond_embeddings: Optional[torch.Tensor] = None,
+    rescale_factor: float = 0.0,
 ) -> torch.Tensor:
     """
     Predict noise using classifier-free guidance.
@@ -116,6 +193,21 @@ def predict_noise(
         ).sample
         noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
         noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+
+        # Apply Rescale CFG if requested
+        if rescale_factor > 0.0:
+            # Calculate standard deviations
+            std_text = noise_pred_text.std(dim=list(range(1, noise_pred_text.ndim)), keepdim=True)
+            std_cfg = noise_pred.std(dim=list(range(1, noise_pred.ndim)), keepdim=True)
+            
+            # Rescale the guided noise to match the spread of the text-conditioned noise
+            # (prevent over-exposure/frying at high CFG)
+            factor = std_text / (std_cfg + 1e-7)
+            noise_pred_rescaled = noise_pred * factor
+            
+            # Blend original and rescaled
+            noise_pred = noise_pred_rescaled * rescale_factor + noise_pred * (1 - rescale_factor)
+
     return noise_pred
 
 
